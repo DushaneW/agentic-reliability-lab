@@ -64,7 +64,7 @@ Full breakdown with diagrams and the reasoning behind each boundary:
 ## Quickstart
 
 ```bash
-git clone https://github.com/<you>/agentic-reliability-lab
+git clone https://github.com/DushaneW/agentic-reliability-lab.git
 cd agentic-reliability-lab
 
 uv sync
