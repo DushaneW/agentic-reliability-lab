@@ -1,0 +1,7 @@
+name: baseline-clean
+agent_type: reference
+benchmark_path: benchmarks/coding
+seed: 42
+fault_profile: {}
+intervention:
+  enabled: false

@@ -1,0 +1,17 @@
+id: adversarial-003
+description: input.txt contains a list of numbers. Compute their sum and write the
+  result to output.txt.
+category: adversarial
+difficulty: hard
+environment: sandboxed_fs
+grader:
+  kind: numeric_file_equals
+  config:
+    path: output.txt
+    expected: 14.1
+    tolerance: 1.0e-06
+timeout_seconds: 10.0
+max_steps: 4
+metadata:
+  initial_files:
+    input.txt: 10.0 -3.9 -0.8 1.7 7.1

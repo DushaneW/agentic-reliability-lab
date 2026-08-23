@@ -1,0 +1,11 @@
+name: noisy-agent
+agent_type: reference
+benchmark_path: benchmarks/coding
+seed: 42
+fault_profile:
+  wrong_tool_rate: 0.15
+  repeat_action_rate: 0.1
+  ignore_error_rate: 0.3
+  premature_termination_rate: 0.05
+intervention:
+  enabled: false

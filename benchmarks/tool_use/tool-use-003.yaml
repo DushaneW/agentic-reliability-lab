@@ -1,0 +1,17 @@
+id: tool-use-003
+description: input.txt contains a list of numbers. Compute their sum and write the
+  result to output.txt.
+category: tool_use
+difficulty: medium
+environment: sandboxed_fs
+grader:
+  kind: numeric_file_equals
+  config:
+    path: output.txt
+    expected: 492.4
+    tolerance: 1.0e-06
+timeout_seconds: 10.0
+max_steps: 8
+metadata:
+  initial_files:
+    input.txt: 76.4 49.6 58.3 46.8 4.5 93.3 87.0 59.5 17.0

@@ -1,0 +1,29 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"  # weekly, Monday 06:00 UTC
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv sync
+          uv pip install -e .
+
+      - name: Audit dependencies for known vulnerabilities
+        run: |
+          uv pip install pip-audit --quiet
+          uv run pip-audit --strict

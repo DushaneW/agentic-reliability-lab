@@ -1,0 +1,16 @@
+id: fixture-001
+description: sum the numbers in input.txt
+category: coding
+difficulty: easy
+environment: sandboxed_fs
+grader:
+  kind: numeric_file_equals
+  config:
+    path: output.txt
+    expected: 6.0
+    tolerance: 1.0e-06
+timeout_seconds: 5.0
+max_steps: 8
+metadata:
+  initial_files:
+    input.txt: "1 2 3"

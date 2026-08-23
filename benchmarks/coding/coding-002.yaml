@@ -1,0 +1,17 @@
+id: coding-002
+description: input.txt contains a list of numbers. Compute their sum and write the
+  result to output.txt.
+category: coding
+difficulty: easy
+environment: sandboxed_fs
+grader:
+  kind: numeric_file_equals
+  config:
+    path: output.txt
+    expected: -54.699999999999996
+    tolerance: 1.0e-06
+timeout_seconds: 10.0
+max_steps: 8
+metadata:
+  initial_files:
+    input.txt: -40.16 -14.54

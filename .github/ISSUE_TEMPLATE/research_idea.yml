@@ -1,0 +1,40 @@
+name: Research idea
+description: Propose an experiment or research direction
+labels: [research]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Research question
+    validations:
+      required: true
+
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis
+      description: State it carefully and falsifiably.
+    validations:
+      required: true
+
+  - type: textarea
+    id: experiment
+    attributes:
+      label: Proposed experiment
+      description: What would you run, against what data, with what baseline?
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Expected evidence
+      description: What result would confirm vs. disconfirm the hypothesis?
+    validations:
+      required: true
+
+  - type: textarea
+    id: confounders
+    attributes:
+      label: Potential confounders
+      description: What else could explain the result you're expecting?

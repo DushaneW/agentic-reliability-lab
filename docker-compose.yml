@@ -1,0 +1,16 @@
+# See the note at the top of Dockerfile: this has not been tested against
+# a running Docker daemon in this project's build environment.
+
+services:
+  dashboard:
+    build: .
+    entrypoint: ["uv", "run", "uvicorn", "arl.dashboard.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - arl-data:/data
+    environment:
+      - ARL_DB_PATH=/data/arl.db
+
+volumes:
+  arl-data:
