@@ -54,7 +54,16 @@ def run_task(task: Task, agent: Agent, run: Run) -> RunOutcome:
 
     for step in range(task.max_steps):
         elapsed = time.monotonic() - start
-        if elapsed > task.timeout_seconds:
+        # Strict `>` was the bug: time.monotonic() has finite resolution
+        # (coarse on some platforms, e.g. ~15ms on Windows), so two calls
+        # microseconds apart can report the identical value. With
+        # timeout_seconds == 0.0, `elapsed > 0.0` was then False on the
+        # very first check whenever elapsed happened to read exactly 0.0,
+        # letting the agent run to completion instead of timing out
+        # immediately. `elapsed` is always >= 0 (time.monotonic() never
+        # goes backwards), so `>=` makes a zero-second budget deterministic
+        # on every platform and clock resolution, independent of timing.
+        if elapsed >= task.timeout_seconds:
             terminated_reason = "timeout"
             recorder.record(EventType.RUN_FAILED, {"kind": "run_lifecycle", "reason": "timeout"})
             break
