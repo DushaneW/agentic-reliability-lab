@@ -23,6 +23,17 @@ relying on it for anything beyond running the bundled benchmark suite.
 - Allow-lists a fixed set of read-only commands (`echo`, `ls`, `cat`, `wc`,
   `grep`, `sort`, `uniq`, `head`, `tail`). Anything else is rejected before
   a subprocess is even started.
+- Does not run the allow-listed command name as the subprocess target.
+  It dispatches to a fixed, embedded Python implementation of that
+  command via `[sys.executable, "-c", <script>, ...]`. This is a
+  cross-platform fix, not a design preference: `echo`/`ls`/`cat`/etc. are
+  real coreutils executables on PATH on POSIX but do not exist as
+  standalone Windows executables (aside from `sort.exe`), so running the
+  command name directly failed on Windows with `FileNotFoundError`. The
+  embedded script is fixed and non-configurable — the allow-list check
+  still happens in Python before any subprocess starts, and arguments are
+  still passed as separate argv entries (`shell=False`), never
+  interpolated into a shell string.
 - Runs in a fresh `tempfile.TemporaryDirectory()`, populated only with the
   files explicitly passed to the tool.
 - Runs with `env={}` — the subprocess receives no environment variables at
