@@ -1,245 +1,480 @@
 # Agentic Reliability Lab
 
-A benchmark, telemetry, and failure-analysis tool for autonomous agents,
-with a baseline model for predicting agent failure from a partial
-trajectory.
+A benchmark, telemetry, and failure-analysis framework for autonomous agents,
+with a baseline model for predicting agent failure from partial trajectories.
 
-## Why this exists
+> **Research question:** Can the shape of an agent's trajectory reveal that a
+> run is likely to fail before the run has finished?
 
-Agent runs fail in ways that are hard to see coming from the outside: a
-tool gets called twice in a row with identical arguments, an error gets
-retried instead of adapted to, the agent finishes early without producing
-what was asked. This project builds the infrastructure to capture that —
-full typed trajectories, deterministic grading, rule-based failure
-diagnosis — and then asks whether the shape of a trajectory predicts its
-outcome *before it's finished*.
+---
 
-**Read this before anything else:** the reference agent bundled here is a
-deterministic scripted policy, not a real LLM. There was no API key wired
-into the environment this project was built in, so instead of faking model
-calls, the agent uses a `FaultProfile` mechanism to inject controlled,
-disclosed incompetence (wrong tool choice, looping, ignoring errors,
-quitting early) and generate labeled failure trajectories from that. Every
-number below describes how well the detection pipeline works on *that*
-data. See [`docs/research/limitations.md`](docs/research/limitations.md)
-for exactly what that does and doesn't tell you about real agents.
+## Overview
 
-## Research question
+Agentic Reliability Lab is an experimental framework for studying reliability
+signals in autonomous-agent trajectories.
 
-Can features extracted from a partial agent trajectory predict whether the
-run will ultimately fail — before it finishes?
+The project records structured agent activity, evaluates task outcomes
+deterministically, diagnoses failure patterns, and trains a baseline model that
+uses partial trajectory information to estimate the likelihood of eventual
+failure.
 
-## What it does
-
-- Runs an agent against benchmark tasks in a sandboxed virtual filesystem,
-  capturing a complete typed trajectory of every model decision, tool
-  call, and result.
-- Grades outcomes deterministically (no LLM judges — see
-  [`docs/evaluation.md`](docs/evaluation.md) for why).
-- Diagnoses failures with rule-based detectors that cite specific events
-  as evidence, not free-text explanations.
-- Trains a baseline reliability predictor and measures its early-warning
-  power at 20/40/60/80/100% trajectory completion.
-- Runs reproducible experiments (agent config vs. benchmark vs. optional
-  intervention) and compares them.
-- Serves a local dashboard over the same SQLite database the CLI writes to.
-
-## Architecture
+The system is designed around a simple idea:
 
 ```text
-CLI / Dashboard
-      down
-Runtime (agent <-> tools <-> trajectory recorder)
-      down
-Evaluation (deterministic graders) -> Failure analysis (rule-based detectors)
-      down
-Reliability (feature extraction -> logistic regression)
-      down
-Storage (SQLite)
-```
+agent behavior
+      |
+      v
+trajectory telemetry
+      |
+      v
+deterministic evaluation
+      |
+      v
+failure diagnosis
+      |
+      v
+early reliability prediction
+Important limitation
 
-Full breakdown with diagrams and the reasoning behind each boundary:
-[`docs/architecture.md`](docs/architecture.md).
+The reference agent included in this repository is not an LLM.
 
-## Quickstart
+It is a deterministic scripted policy. The original development environment did
+not have an LLM API configured, so model calls are not simulated or fabricated.
+Instead, controlled failure behavior is injected through FaultProfile
+configurations.
 
-```bash
+This makes the experiments reproducible, but it also means that the reported
+metrics describe this benchmark and its controlled fault profiles — not the
+reliability of real-world LLM agents.
+
+See docs/research/limitations.md for the
+complete discussion.
+
+What the project does
+Structured trajectory capture
+
+Every run records a typed trajectory containing:
+
+agent decisions
+tool calls
+tool arguments
+tool results
+errors
+termination information
+evaluation results
+Deterministic evaluation
+
+Task outcomes are graded programmatically rather than by an LLM judge.
+
+This keeps evaluation reproducible and avoids introducing another model into
+the measurement pipeline.
+
+See docs/evaluation.md.
+
+Failure diagnosis
+
+Failures are classified using explicit rule-based detectors.
+
+Current categories include:
+
+planning_failure
+tool_selection_failure
+tool_execution_failure
+looping_failure
+premature_termination
+error_recovery_failure
+timeout_failure
+unknown_failure
+
+Each diagnosis is backed by concrete trajectory evidence rather than a
+free-form explanation.
+
+Reliability prediction
+
+The baseline predictor is a logistic-regression model using hand-built
+trajectory features such as:
+
+repetition ratio
+action diversity
+error recency
+tool-call behavior
+trajectory characteristics
+
+The model is evaluated at different points in a trajectory to measure how
+early useful warning signals appear.
+
+Reproducible experiments
+
+Experiments combine:
+
+an agent configuration
+a benchmark
+an optional intervention
+a random seed
+
+This makes experiments repeatable and easier to compare.
+
+Local dashboard
+
+Run data is stored in SQLite and can also be exposed through the local
+dashboard.
+
+Architecture
+                    CLI / Dashboard
+                           |
+                           v
+                 Agent Runtime
+                           |
+                           v
+          Agent <-> Tools <-> Recorder
+                           |
+                           v
+              Deterministic Evaluation
+                           |
+                           v
+                Failure Analysis
+                           |
+                           v
+              Reliability Prediction
+                           |
+                           v
+                    SQLite Storage
+
+The main components are intentionally separated:
+
+Component	Responsibility
+Runtime	Executes the agent and records the trajectory
+Tools	Provides controlled operations available to the agent
+Evaluation	Determines whether the task actually succeeded
+Failure analysis	Identifies observable failure patterns
+Reliability	Extracts trajectory features and predicts failure
+Storage	Persists runs and telemetry in SQLite
+CLI / Dashboard	Provides access to the collected data
+
+See docs/architecture.md for the detailed design.
+
+Quickstart
+Requirements
+Python
+Git
+uv
+
+Clone the repository:
+
 git clone https://github.com/DushaneW/agentic-reliability-lab.git
 cd agentic-reliability-lab
 
+Install dependencies:
+
 uv sync
 uv pip install -e .
+
+Create the local environment file:
+
 cp .env.example .env
 
+Run the smoke benchmark:
+
 arl benchmark run benchmarks/smoke
+
+List recorded runs:
+
 arl runs list
+
+Inspect a run:
+
 arl runs inspect <RUN_ID>
-```
 
-Full walkthrough: [`docs/getting-started.md`](docs/getting-started.md).
+Analyze a run:
 
-## Example
+arl runs analyze <RUN_ID>
+Example
 
-```bash
+A normal benchmark run looks like:
+
 $ arl benchmark run benchmarks/smoke
+
 Task        Run ID    Result  Steps  Failure category
-smoke-001   97f1fd94  PASS    5      none
-smoke-002   e1a3ad1b  PASS    5      none
+smoke-001   ...       PASS    5      none
+smoke-002   ...       PASS    5      none
 
 2/2 tasks passed
-```
 
-```bash
-$ arl runs analyze <RUN_ID>   # on a run that failed
-Run 8f29c1a4-...
+A failed run can be analyzed directly:
+
+$ arl runs analyze <RUN_ID>
+
+Run <RUN_ID>
 Diagnosis: looping_failure
-Confidence: 0.83
-Wasted tool calls: 2
-Recovered: False
-  - 4 events are part of an identical repeated tool call (events: a1b2c3d4, ...)
-```
-
-## Benchmarking
-
-23 tasks across 5 suites (`smoke`, `coding`, `tool_use`, `recovery`,
-`adversarial`), generated by `scripts/generate_benchmark_tasks.py`. All
-currently share one underlying operation (sum numbers, write result)
-because that's what the reference agent actually implements — see
-[`docs/benchmarks.md`](docs/benchmarks.md) for why the task suite is
-narrow by design rather than padded out to look broader than it is.
-
-A sixth suite, `benchmarks/failures`, is a deterministic failure-mode
-demo — 5 hand-designed tasks that each reliably trigger one specific
-diagnosis (looping, error-recovery failure, timeout, tool misuse, and a
-partial-recovery case that correctly comes back clean). Every value
-below is real, captured by actually running the commands, not typed in:
-
-```bash
-$ arl benchmark run benchmarks/failures
-Task                      Run ID    Result  Steps  Failure category
-failure-error-recovery…   fef6f0f5  FAIL    5      error_recovery_failure
-failure-looping-001       2e1ed20c  FAIL    5      looping_failure
-failure-partial-recove…   c87efe4e  PASS    5      none
-failure-timeout-001       1b44f83a  FAIL    0      timeout_failure
-failure-tool-misuse-001   88a77148  FAIL    5      tool_selection_failure
-
-1/5 tasks passed
-
-$ arl runs analyze fef6f0f5
-Diagnosis: error_recovery_failure
 Confidence: 0.95
 Wasted tool calls: 3
 Recovered: False
-  - a tool error was followed by retrying the exact same failing call
-```
 
-Full breakdown of how each scenario is constructed and why it lands on
-the category it does: [`docs/benchmarks.md`](docs/benchmarks.md). A real
-generated Markdown report for one of these runs is checked in at
-[`docs/examples/failure_report_example.md`](docs/examples/failure_report_example.md).
+  - repeated identical tool calls were detected
 
-## Failure analysis
+The actual run ID and evidence are generated from the local SQLite database.
 
-Seven failure categories (`planning_failure`, `tool_selection_failure`,
-`tool_execution_failure`, `looping_failure`, `premature_termination`,
-`error_recovery_failure`, `timeout_failure`, plus `unknown_failure` as an
-honest fallback), each backed by a rule-based detector that cites the
-specific trajectory events it matched on. Details:
-[`docs/failure-analysis.md`](docs/failure-analysis.md).
+Benchmarks
 
-## Reliability prediction
+The repository currently contains 28 benchmark tasks across 6 suites.
 
-Baseline: logistic regression over 9 hand-built trajectory features
-(repetition ratio, action diversity, error recency, etc. — full list in
-[`docs/research/methodology.md`](docs/research/methodology.md)).
+Core benchmark suites
 
-```bash
+The main benchmark generator produces 23 tasks across:
+
+smoke
+coding
+tool_use
+recovery
+adversarial
+
+Tasks are generated by:
+
+scripts/generate_benchmark_tasks.py
+
+The current reference agent intentionally implements a narrow underlying
+operation: summing numbers and writing the result.
+
+This is a deliberate limitation rather than an attempt to make the benchmark
+appear broader than the implementation actually is.
+
+See docs/benchmarks.md.
+
+Failure-mode benchmark
+
+The repository also includes:
+
+benchmarks/failures
+
+This is a deterministic failure-analysis suite containing five hand-designed
+scenarios:
+
+Scenario	Expected diagnosis
+Error recovery	error_recovery_failure
+Repeated action	looping_failure
+Timeout	timeout_failure
+Tool misuse	tool_selection_failure
+Partial recovery	successful recovery
+
+Run the suite with:
+
+arl benchmark run benchmarks/failures
+
+The scenarios are designed to make failure detectors reproducible and easy to
+inspect.
+
+A generated Markdown example is included at:
+
+docs/examples/failure_report_example.md
+
+Failure analysis
+
+The diagnostic system deliberately uses explicit rules instead of generating
+free-form explanations.
+
+For example, a looping failure can be detected when an agent repeatedly issues
+the same tool call with identical arguments.
+
+An error-recovery failure requires stronger evidence: an operation fails and the
+agent subsequently retries the same failing operation instead of adapting.
+
+This makes the diagnosis:
+
+deterministic
+inspectable
+reproducible
+tied to actual trajectory events
+
+See docs/failure-analysis.md.
+
+Reliability prediction
+
+The baseline model uses logistic regression over nine hand-built trajectory
+features.
+
+Train the model:
+
 arl reliability train --seeds-per-profile 10
+
+Evaluate it:
+
 arl reliability evaluate
-```
 
-## Experiments
+The complete methodology and feature definitions are documented in:
 
-```bash
+docs/research/methodology.md
+
+Results
+
+The repository includes the reliability experiment results in:
+
+models/reliability_metrics.json
+
+The reported dataset contains:
+
+6,630 trajectory-prefix examples
+1,360 runs
+17 tasks used by the reliability experiment
+8 fault profiles
+10 seeds per profile
+41% failure rate
+Overall performance
+Metric	Score
+AUROC	0.893
+AUPRC	0.860
+Precision	0.725
+Recall	0.780
+F1	0.752
+False positive rate	0.211
+Early warning
+
+AUROC by trajectory completion:
+
+Completion	AUROC
+20%	0.599
+40%	0.802
+60%	0.849
+80%	0.958
+100%	1.000
+
+The 100% result should be interpreted cautiously. At full trajectory
+completion, the system already has access to the complete run.
+
+The more relevant question is whether useful predictive signal appears earlier.
+
+An ablation using only trajectory_length achieves 0.555 AUROC under the
+same split, indicating that the reported signal is not simply a proxy for
+trajectory length.
+
+See docs/research/experiments.md for the
+complete analysis.
+
+Experiments
+
+Run the baseline experiment:
+
 arl experiment run experiments/configs/baseline.yaml
+
+Run the noisy-agent configuration:
+
 arl experiment run experiments/configs/noisy_agent.yaml
+
+Compare experiments:
+
 arl experiment compare <EXPERIMENT_A_ID> <EXPERIMENT_B_ID>
-```
 
-Config format and the one implemented intervention strategy (stop early on
-predicted failure — cost-only, not a recovery mechanism):
-[`docs/configuration.md`](docs/configuration.md).
+The currently implemented intervention strategy stops execution when failure
+is predicted.
 
-## Results
+It is intentionally treated as a cost-control mechanism, not a recovery
+mechanism.
 
-These are real numbers from `models/reliability_metrics.json`, produced by
-running `arl reliability train --seeds-per-profile 10` against this
-repository's benchmark suite. Full writeup with feature importances, one
-ablation check, and what would strengthen the result:
-[`docs/research/experiments.md`](docs/research/experiments.md).
+See docs/configuration.md.
 
-**Dataset:** 6,630 trajectory-prefix examples from 1,360 runs across 17
-tasks x 8 fault profiles x 10 seeds. 41% failure rate.
+Limitations
 
-**Overall:**
+The most important limitation is that the reference agent is a deterministic
+scripted policy rather than a real LLM agent.
 
-| Metric | Value |
-|---|---|
-| AUROC | 0.893 |
-| AUPRC | 0.860 |
-| Precision | 0.725 |
-| Recall | 0.780 |
-| F1 | 0.752 |
-| False positive rate | 0.211 |
+Other limitations include:
 
-**Early warning (AUROC by trajectory completion):**
+narrow task diversity
+controlled fault injection
+feature collinearity
+no cross-validation in the baseline experiment
+a single implemented intervention strategy
+no production-scale evaluation
+no detailed cost or latency measurements
 
-| 20% | 40% | 60% | 80% | 100% |
-|---|---|---|---|---|
-| 0.599 | 0.802 | 0.849 | 0.958 | 1.000 |
+The results should therefore be interpreted as a study of the measurement and
+analysis pipeline, rather than a claim that these metrics transfer directly
+to production agents.
 
-The 100% number should be read skeptically, not as a headline — see
-[`docs/research/experiments.md`](docs/research/experiments.md) for why.
-An ablation confirms the signal isn't just a proxy for trajectory length:
-`trajectory_length` alone gets 0.555 AUROC (barely above chance) with the
-same split.
+See docs/research/limitations.md.
 
-## Limitations
+Security
 
-Full list, led by "the reference agent is not a real LLM":
-[`docs/research/limitations.md`](docs/research/limitations.md). Also
-covers: narrow task suite, feature collinearity in the model, no
-cross-validation, single-strategy intervention, and what's not measured
-(cost, latency, scale).
+The shell tool can execute real subprocesses.
 
-## Security
+Execution is restricted using:
 
-The `shell` tool runs a real subprocess under an allow-list, empty
-environment, temp directory, and timeout. That's process-level
-restriction, not container isolation — no Docker daemon was available in
-this project's build environment to verify a containerized version. Full
-threat model: [`SECURITY.md`](SECURITY.md).
+an allow-list
+an empty environment
+a temporary working directory
+a timeout
 
-## Development
+These are process-level restrictions, not container isolation.
 
-```bash
+The original development environment did not provide a Docker daemon for
+verifying a containerized execution model.
+
+See SECURITY.md for the complete threat model.
+
+Development
+
+Install development dependencies:
+
 make install
-make test         # pytest
-make lint         # ruff
-make typecheck    # mypy --strict
-make check        # all three
-make benchmark    # arl benchmark run benchmarks/smoke
-make dashboard    # uvicorn arl.dashboard.app:app --reload
-```
 
-38 tests (unit, integration, end-to-end) pass; `ruff check` and
-`mypy -p arl --strict` are both clean as of this writeup.
+Run tests:
 
-## Contributing
+make test
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Issue templates for bugs,
-features, and research ideas are under `.github/ISSUE_TEMPLATE/`.
+Run linting:
 
-## License
+make lint
 
-Apache 2.0 — see [`LICENSE`](LICENSE).
+Run type checking:
+
+make typecheck
+
+Run the complete check suite:
+
+make check
+
+Run the benchmark:
+
+make benchmark
+
+Start the dashboard:
+
+make dashboard
+Verification
+
+The current repository passes:
+
+76 tests
+ruff check .
+mypy -p arl --strict
+
+Latest verification:
+
+76 passed
+All checks passed!
+Success: no issues found in 50 source files
+Documentation
+Document	Description
+docs/getting-started.md	Getting started
+docs/architecture.md	System architecture
+docs/benchmarks.md	Benchmark design
+docs/evaluation.md	Deterministic evaluation
+docs/failure-analysis.md	Failure detection
+docs/configuration.md	Configuration
+docs/research/methodology.md	Research methodology
+docs/research/experiments.md	Experiment results
+docs/research/limitations.md	Limitations
+SECURITY.md	Security model
+Contributing
+
+Contributions, bug reports, research ideas, and improvements are welcome.
+
+See CONTRIBUTING.md for development guidelines.
+
+Issue templates are available under:
+
+.github/ISSUE_TEMPLATE/
+License
+
+Apache 2.0.
+
+See LICENSE.
