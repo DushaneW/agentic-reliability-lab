@@ -16,6 +16,20 @@ docs/research/limitations.md. It does NOT simulate the failure modes of a
 real LLM agent; it simulates the *shape* of those failure modes so the
 detection pipeline (features -> classifier -> early warning) can be built
 and evaluated on real, reproducible data.
+
+`scripted_steps` is a second, complementary way to control the agent,
+added for `benchmarks/failures` (see docs/benchmarks.md). `FaultProfile`
+rates are population-level — they describe "roughly how often" a fault
+happens across a run and are what the reliability dataset is built from.
+They are not precise enough to construct a single, hand-designed
+trajectory that exercises one specific failure detector in isolation
+(e.g. "exactly one invalid tool call, nothing else"). `scripted_steps`
+forces an exact `AgentDecision` at a specific `decide()` call index,
+bypassing `FaultProfile` entirely for that one call, while every
+unscripted call still goes through the normal plan/fault logic
+unchanged. This is strictly additive: a `ReferenceAgent` built without
+`scripted_steps` (the only way any existing caller constructs one)
+behaves exactly as before.
 """
 
 from __future__ import annotations
@@ -26,6 +40,7 @@ from typing import Any
 
 from arl.agents.base import ActionKind, Agent, AgentDecision
 from arl.domain.events import EventType, TrajectoryEvent
+from arl.domain.task import Task
 
 
 @dataclass(frozen=True)
@@ -52,10 +67,17 @@ class ReferenceAgent(Agent):
 
     name = "reference"
 
-    def __init__(self, fault_profile: FaultProfile | None = None, seed: int = 0) -> None:
+    def __init__(
+        self,
+        fault_profile: FaultProfile | None = None,
+        seed: int = 0,
+        scripted_steps: dict[int, AgentDecision] | None = None,
+    ) -> None:
         self.fault_profile = fault_profile or FaultProfile()
         self._rng = random.Random(seed)
         self._last_action_signature: tuple[str, ...] | None = None
+        self.scripted_steps = scripted_steps or {}
+        self._call_index = 0
 
     def decide(
         self,
@@ -64,6 +86,17 @@ class ReferenceAgent(Agent):
         history: list[TrajectoryEvent],
     ) -> AgentDecision:
         del task_description, tool_specs  # strategy is driven by op/metadata seen in history
+
+        call_index = self._call_index
+        self._call_index += 1
+        if call_index in self.scripted_steps:
+            # Forced decision for this exact call, bypassing FaultProfile
+            # entirely — see the module docstring for why this exists
+            # alongside the probabilistic fault mechanism.
+            decision = self.scripted_steps[call_index]
+            self._last_decision = decision
+            return decision
+
         step = self._plan_step(history)
 
         if self._rng.random() < self.fault_profile.premature_termination_rate:
@@ -174,3 +207,45 @@ def _is_number(token: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def agent_from_task_metadata(task: Task, seed: int) -> ReferenceAgent:
+    """Builds a ReferenceAgent configured from a task's own metadata.
+
+    Benchmark tasks may declare, under `metadata`:
+
+    - `fault_profile`: kwargs for `FaultProfile` (e.g.
+      `{"repeat_action_rate": 1.0}`), applied for the whole run.
+    - `scripted_steps`: a mapping of `decide()` call index -> forced
+      tool call, e.g.
+      `{0: {"tool_name": "filesystem", "arguments": {"op": "bogus"}}}`.
+      Each entry may set `kind: finish` instead of a tool call.
+
+    This lets a benchmark suite (see `benchmarks/failures` and
+    `docs/benchmarks.md`) declare a deterministic failure scenario
+    entirely in the task YAML, the same way it already declares
+    `initial_files`. Tasks that set neither key (every task in every
+    benchmark suite that existed before `benchmarks/failures`) get back
+    exactly the plain `ReferenceAgent(seed=seed)` they got before this
+    function existed — this is an additive read of `task.metadata`, not a
+    change to how any existing task is interpreted.
+    """
+    fault_profile_kwargs = task.metadata.get("fault_profile") or {}
+    fault_profile = FaultProfile(**fault_profile_kwargs) if fault_profile_kwargs else None
+
+    scripted_steps_raw = task.metadata.get("scripted_steps") or {}
+    scripted_steps: dict[int, AgentDecision] = {}
+    for index, step in scripted_steps_raw.items():
+        kind = ActionKind.FINISH if step.get("kind") == "finish" else ActionKind.TOOL_CALL
+        scripted_steps[int(index)] = AgentDecision(
+            kind=kind,
+            tool_name=step.get("tool_name"),
+            arguments=step.get("arguments"),
+            rationale=step.get("rationale", "scripted"),
+        )
+
+    return ReferenceAgent(
+        fault_profile=fault_profile,
+        seed=seed,
+        scripted_steps=scripted_steps or None,
+    )

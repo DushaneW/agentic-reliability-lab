@@ -1,0 +1,31 @@
+id: failure-partial-recovery-001
+description: >
+  Sum the numbers in input.txt and write the result to output.txt.
+  scripted_steps forces exactly one bad call at the very start (reading a
+  file that does not exist), then leaves every later decision to the
+  agent's normal plan, which finds and uses the real input successfully.
+  This demonstrates the diagnosis engine correctly NOT flagging a
+  transient hiccup as a failure: the task succeeds, so `diagnose()`
+  returns FailureCategory.NONE with recovered=True, exactly as it does
+  for any other successful run. See docs/benchmarks.md for why
+  FailureDiagnosis.evidence is intentionally empty here — the raw
+  trajectory (via `arl runs inspect`) is where the mid-run error is
+  visible, not the diagnosis.
+category: error_recovery
+difficulty: medium
+environment: sandboxed_fs
+grader:
+  kind: numeric_file_equals
+  config:
+    path: output.txt
+    expected: 6.0
+    tolerance: 1.0e-06
+timeout_seconds: 10.0
+max_steps: 8
+metadata:
+  initial_files:
+    input.txt: "1 2 3"
+  scripted_steps:
+    0:
+      tool_name: filesystem
+      arguments: {op: read, path: does_not_exist.txt}

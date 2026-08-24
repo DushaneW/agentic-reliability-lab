@@ -108,6 +108,36 @@ because that's what the reference agent actually implements — see
 [`docs/benchmarks.md`](docs/benchmarks.md) for why the task suite is
 narrow by design rather than padded out to look broader than it is.
 
+A sixth suite, `benchmarks/failures`, is a deterministic failure-mode
+demo — 5 hand-designed tasks that each reliably trigger one specific
+diagnosis (looping, error-recovery failure, timeout, tool misuse, and a
+partial-recovery case that correctly comes back clean). Every value
+below is real, captured by actually running the commands, not typed in:
+
+```bash
+$ arl benchmark run benchmarks/failures
+Task                      Run ID    Result  Steps  Failure category
+failure-error-recovery…   fef6f0f5  FAIL    5      error_recovery_failure
+failure-looping-001       2e1ed20c  FAIL    5      looping_failure
+failure-partial-recove…   c87efe4e  PASS    5      none
+failure-timeout-001       1b44f83a  FAIL    0      timeout_failure
+failure-tool-misuse-001   88a77148  FAIL    5      tool_selection_failure
+
+1/5 tasks passed
+
+$ arl runs analyze fef6f0f5
+Diagnosis: error_recovery_failure
+Confidence: 0.95
+Wasted tool calls: 3
+Recovered: False
+  - a tool error was followed by retrying the exact same failing call
+```
+
+Full breakdown of how each scenario is constructed and why it lands on
+the category it does: [`docs/benchmarks.md`](docs/benchmarks.md). A real
+generated Markdown report for one of these runs is checked in at
+[`docs/examples/failure_report_example.md`](docs/examples/failure_report_example.md).
+
 ## Failure analysis
 
 Seven failure categories (`planning_failure`, `tool_selection_failure`,

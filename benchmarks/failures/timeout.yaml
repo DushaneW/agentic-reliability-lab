@@ -1,0 +1,24 @@
+id: failure-timeout-001
+description: >
+  Sum the numbers in input.txt and write the result to output.txt.
+  timeout_seconds=0.0 gives the agent a zero-second budget, so run_task's
+  timeout check fires before any decision is made. This exercises the
+  exact code path fixed for cross-platform determinism in
+  src/arl/runtime/runner.py (elapsed >= timeout_seconds, not >): every run
+  of this task times out, on every platform, regardless of clock
+  resolution. No fault_profile or scripted_steps needed — a clean
+  reference agent never gets the chance to run.
+category: adversarial
+difficulty: hard
+environment: sandboxed_fs
+grader:
+  kind: numeric_file_equals
+  config:
+    path: output.txt
+    expected: 6.0
+    tolerance: 1.0e-06
+timeout_seconds: 0.0
+max_steps: 8
+metadata:
+  initial_files:
+    input.txt: "1 2 3"

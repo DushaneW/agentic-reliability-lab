@@ -1,0 +1,28 @@
+id: failure-tool-misuse-001
+description: >
+  Sum the numbers in input.txt and write the result to output.txt.
+  scripted_steps forces the agent's write step to call the filesystem
+  tool with a missing required argument (no 'path'), which the tool
+  itself rejects as invalid_arguments. Unlike the error_recovery
+  scenario, this is a single isolated tool misuse: the agent does not
+  retry it and does not loop, so it should surface as a distinct
+  tool_selection_failure rather than looping_failure or
+  error_recovery_failure. See docs/benchmarks.md for the detector math.
+category: tool_use
+difficulty: hard
+environment: sandboxed_fs
+grader:
+  kind: numeric_file_equals
+  config:
+    path: output.txt
+    expected: 6.0
+    tolerance: 1.0e-06
+timeout_seconds: 10.0
+max_steps: 8
+metadata:
+  initial_files:
+    input.txt: "1 2 3"
+  scripted_steps:
+    3:
+      tool_name: filesystem
+      arguments: {op: write}

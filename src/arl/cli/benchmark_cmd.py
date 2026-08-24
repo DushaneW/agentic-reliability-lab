@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from arl.agents.reference import ReferenceAgent
+from arl.agents.reference import agent_from_task_metadata
 from arl.analysis.engine import diagnose
 from arl.domain.run import Run
 from arl.evaluation.benchmark import load_benchmark
@@ -62,7 +62,7 @@ def run_benchmark(
 
     for i, task in enumerate(tasks):
         run = Run(task_id=task.id, agent_name="reference", seed=seed + i)
-        agent = ReferenceAgent(seed=run.seed)
+        agent = agent_from_task_metadata(task, seed=run.seed)
         outcome = run_task(task, agent, run)
         evaluation = evaluate(task, outcome.task_result)
         diagnosis = diagnose(task, outcome.trajectory, evaluation)

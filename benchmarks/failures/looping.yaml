@@ -1,0 +1,24 @@
+id: failure-looping-001
+description: >
+  Sum the numbers in input.txt and write the result to output.txt.
+  fault_profile.repeat_action_rate=1.0 makes the reference agent repeat
+  its previous successful action forever instead of progressing through
+  its plan, producing a deterministic looping_failure trajectory. See
+  docs/benchmarks.md for exactly how this is deterministic (not merely
+  "very likely").
+category: coding
+difficulty: hard
+environment: sandboxed_fs
+grader:
+  kind: numeric_file_equals
+  config:
+    path: output.txt
+    expected: 6.0
+    tolerance: 1.0e-06
+timeout_seconds: 10.0
+max_steps: 8
+metadata:
+  initial_files:
+    input.txt: "1 2 3"
+  fault_profile:
+    repeat_action_rate: 1.0

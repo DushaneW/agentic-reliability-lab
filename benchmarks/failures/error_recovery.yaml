@@ -1,0 +1,33 @@
+id: failure-error-recovery-001
+description: >
+  Sum the numbers in input.txt and write the result to output.txt.
+  scripted_steps forces the agent to attempt reading a file that does not
+  exist, three times in a row, before falling back to its normal plan
+  (which by then writes a default/incorrect result). This deterministically
+  exercises "repeated failing tool call without adapting" — see
+  docs/benchmarks.md for the exact detector math behind why this lands as
+  error_recovery_failure specifically, rather than looping_failure.
+category: error_recovery
+difficulty: hard
+environment: sandboxed_fs
+grader:
+  kind: numeric_file_equals
+  config:
+    path: output.txt
+    expected: 30.0
+    tolerance: 1.0e-06
+timeout_seconds: 10.0
+max_steps: 8
+metadata:
+  initial_files:
+    input.txt: "10 20"
+  scripted_steps:
+    0:
+      tool_name: filesystem
+      arguments: {op: read, path: does_not_exist.txt}
+    1:
+      tool_name: filesystem
+      arguments: {op: read, path: does_not_exist.txt}
+    2:
+      tool_name: filesystem
+      arguments: {op: read, path: does_not_exist.txt}
