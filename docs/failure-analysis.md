@@ -14,7 +14,18 @@ trajectory's event log and picks the highest-weight match:
 | `tool_execution_failure` | `detect_repeated_tool_errors` | The same tool failed 2+ times |
 | `premature_termination` | `detect_premature_termination` | Agent finished, unsuccessfully, using less than half its step budget |
 | `tool_selection_failure` | `detect_tool_selection_failure` | At least one tool error with no clear retry/loop pattern (weakest signal) |
+| `incorrect_output` | `detect_incorrect_output` | Agent finished by itself, no tool ever failed, grader rejected the result (weakest signal; says *what* happened, not *why*) |
 | `unknown_failure` | (fallback) | Failed, but no detector matched |
+
+`planning_failure`, `context_failure`, `reasoning_failure` and
+`safety_violation` exist in the `FailureCategory` enum but **no detector
+assigns them**; they will never appear in a diagnosis. Also note that
+`tool_selection_failure` fires on *any* single tool error that is not part of a
+loop, so it cannot distinguish a wrong tool from bad arguments or from a task
+the agent cannot do. On the 10 `benchmarks/diverse` tasks, which the scripted
+agent cannot solve, 9 of 10 failures were labeled `tool_selection_failure`.
+None of the detectors has been validated against hand-labeled real
+trajectories.
 
 Every diagnosis carries `evidence`: a description plus the specific
 `event_ids` that triggered it, so "why was this classified as looping" is

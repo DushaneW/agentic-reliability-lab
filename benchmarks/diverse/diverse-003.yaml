@@ -1,0 +1,16 @@
+id: diverse-003
+description: 'numbers.txt contains integers separated by spaces. Write them to output.txt sorted in ascending
+  order, separated by single commas with no spaces (for example: 1,2,3).'
+category: coding
+difficulty: medium
+environment: sandboxed_fs
+grader:
+  kind: file_equals
+  config:
+    path: output.txt
+    expected: 4,5,17,28,40,61,93
+timeout_seconds: 30.0
+max_steps: 8
+metadata:
+  initial_files:
+    numbers.txt: 17 4 93 28 61 5 40

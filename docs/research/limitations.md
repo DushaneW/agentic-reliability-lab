@@ -29,14 +29,18 @@ means:
   coupled to the features that detect them. A real agent's trajectory
   would not be this clean.
 
-`arl/agents/base.py` defines the protocol an external-agent adapter would
-implement to plug in a real model. Building that adapter and re-running
-the same pipeline against real trajectories is the most important next
-step for making any claim about real agents.
+`arl/agents/llm.py` now implements that adapter (Anthropic Messages API and
+any OpenAI-compatible endpoint such as Ollama). It is tested with fake
+transports only and **has never been run against a live model in this
+repository**. Running it on `benchmarks/diverse`, importing the trajectories,
+and re-running the pipeline is still the most important next step for making
+any claim about real agents. `arl reliability score` can score external JSONL
+trajectories (`arl/importers/jsonl.py`), but the predictor is trained on
+synthetic data and its scores may not transfer.
 
 ## Narrow task suite
 
-All 23 benchmark tasks are the same underlying operation: sum the numbers
+All 23 *generated* benchmark tasks are the same underlying operation: sum the numbers
 in `input.txt`, write the result to `output.txt`. Difficulty and category
 labels (`coding`, `tool_use`, `error_recovery`, `adversarial`) organize
 the benchmark/evaluation infrastructure and are exercised by the runner,
@@ -51,6 +55,19 @@ because per-task scripted logic would make "agent failure" analysis
 meaningless — failures would be bugs in the task-specific script, not
 agent behavior.
 
+`benchmarks/diverse` adds 10 hand-written tasks of different shapes for real
+agents. The reference agent cannot solve them, so none of the reported
+reliability numbers use them.
+
+## Failure detectors are unvalidated
+
+The rule-based detectors were written by the same person who wrote the fault
+injector and were only checked on that injector's output and on 5 hand-built
+scenarios. Four enum categories have no detector at all, and
+`tool_selection_failure` is a catch-all for any isolated tool error. See
+`docs/failure-analysis.md`. Precision/recall of the detectors on real
+trajectories is unknown.
+
 ## Reliability model caveats
 
 - **Collinearity, not causal features.** As noted in `experiments.md`,
@@ -59,15 +76,17 @@ agent behavior.
   Logistic regression coefficients here should be read as "the model
   found linearly separable structure using these features," not as "this
   feature causes failure."
-- **Single train/test split.** Results are from one 70/30 split by
-  `run_id`, not cross-validated. No confidence intervals are reported. A
-  proper evaluation would run k-fold cross-validation and report variance,
-  not a single point estimate.
-- **No calibration check.** The model outputs `predict_proba`, and
-  `arl/experiments/intervention.py` treats those outputs as calibrated
-  probabilities (comparing against a threshold), but calibration (e.g. a
-  reliability diagram, Brier score) has not been measured. The
-  probabilities may be systematically over- or under-confident.
+- **Grouped CV exists, but intervals are optimistic.** `arl reliability cv`
+  reports grouped cross-validation with cluster-bootstrap intervals. The
+  bootstrap resamples runs, not seeds, and seeds of one (task, profile) are
+  near-duplicates of a deterministic policy, so the true uncertainty is larger
+  than the printed intervals.
+- **Calibration is only partly measured.** Brier score is reported, but there
+  is no reliability diagram, and `arl/experiments/intervention.py` treats
+  `predict_proba` as a calibrated probability. It may be over- or
+  under-confident.
+- **Early warning at 20% is close to chance** (logistic AUROC 0.596), and the
+  usable signal appears from 40% onward.
 - **Class balance via `class_weight="balanced"`**, not resampling —
   this changes the loss function's weighting but doesn't change the
   underlying data distribution, and its effect on the reported metrics

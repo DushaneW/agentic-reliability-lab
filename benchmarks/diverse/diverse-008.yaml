@@ -1,0 +1,19 @@
+id: diverse-008
+description: 'Create log.txt containing exactly three lines in this order: start, middle, end. Use the
+  append operation at least once.'
+category: tool_use
+difficulty: easy
+environment: sandboxed_fs
+grader:
+  kind: file_equals
+  config:
+    path: log.txt
+    expected: 'start
+
+      middle
+
+      end'
+timeout_seconds: 30.0
+max_steps: 10
+metadata:
+  initial_files: {}

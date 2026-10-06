@@ -108,7 +108,23 @@ because that's what the reference agent actually implements — see
 [`docs/benchmarks.md`](docs/benchmarks.md) for why the task suite is
 narrow by design rather than padded out to look broader than it is.
 
-A sixth suite, `benchmarks/failures`, is a deterministic failure-mode
+`benchmarks/diverse` has 10 hand-written tasks of different shapes (word
+count, log filtering, sorting, multi-file reads, a misleading path, a
+prompt-injection file). The scripted agent cannot solve them; they are for
+real models:
+
+```bash
+export ANTHROPIC_API_KEY=...
+arl benchmark run benchmarks/diverse --agent llm --provider anthropic --model <model>
+# or a local model:
+arl benchmark run benchmarks/diverse --agent llm --provider openai-compat \
+  --base-url http://localhost:11434/v1 --model <ollama-model>
+```
+
+The LLM adapter is tested against fake transports only; it has not been run
+against a live model in this repository.
+
+Another suite, `benchmarks/failures`, is a deterministic failure-mode
 demo — 5 hand-designed tasks that each reliably trigger one specific
 diagnosis (looping, error-recovery failure, timeout, tool misuse, and a
 partial-recovery case that correctly comes back clean). Every value
@@ -140,11 +156,14 @@ generated Markdown report for one of these runs is checked in at
 
 ## Failure analysis
 
-Seven failure categories (`planning_failure`, `tool_selection_failure`,
+Seven categories can be assigned: `tool_selection_failure`,
 `tool_execution_failure`, `looping_failure`, `premature_termination`,
-`error_recovery_failure`, `timeout_failure`, plus `unknown_failure` as an
-honest fallback), each backed by a rule-based detector that cites the
-specific trajectory events it matched on. Details:
+`error_recovery_failure`, `timeout_failure`, `incorrect_output`, plus
+`unknown_failure` as a fallback. Each is a rule-based detector citing the
+trajectory events it matched on. Four further enum values (`planning_failure`,
+`context_failure`, `reasoning_failure`, `safety_violation`) have no detector
+and are never assigned, and `tool_selection_failure` fires on any isolated tool
+error. The detectors have not been validated on real trajectories. Details:
 [`docs/failure-analysis.md`](docs/failure-analysis.md).
 
 ## Reliability prediction
@@ -172,44 +191,46 @@ predicted failure — cost-only, not a recovery mechanism):
 
 ## Results
 
-These are real numbers from `models/reliability_metrics.json`, produced by
-running `arl reliability train --seeds-per-profile 10` against this
-repository's benchmark suite. Full writeup with feature importances, one
-ablation check, and what would strengthen the result:
-[`docs/research/experiments.md`](docs/research/experiments.md).
+All data are synthetic (scripted agent with injected faults), so these
+numbers describe how well the pipeline finds those injected shapes, not how
+well it would predict a real agent's failures. Produced by
+`arl reliability cv --seeds-per-profile 10`; full tables, per-protocol results
+and caveats: [`docs/research/experiments.md`](docs/research/experiments.md) and
+[`docs/research/cv_report.md`](docs/research/cv_report.md).
 
-**Dataset:** 6,630 trajectory-prefix examples from 1,360 runs across 17
-tasks x 8 fault profiles x 10 seeds. 41% failure rate.
+**Dataset:** 6,630 prefix examples from 1,360 runs (17 tasks x 8 fault
+profiles x 10 seeds), 41% failures. Two of the 8 profiles (`clean`,
+`ignore_error`) never fail.
 
-**Overall:**
+**Early warning** (prefixes <= 60% complete, 5-fold grouped by run, 95%
+cluster-bootstrap CI, which is optimistic because seeds are near-duplicates):
 
-| Metric | Value |
+| Predictor | AUROC |
 |---|---|
-| AUROC | 0.893 |
-| AUPRC | 0.860 |
-| Precision | 0.725 |
-| Recall | 0.780 |
-| F1 | 0.752 |
-| False positive rate | 0.211 |
+| constant | 0.500 |
+| trajectory length only | 0.547 [0.533, 0.560] |
+| tool error count only | 0.549 [0.521, 0.579] |
+| logistic regression, 9 features | 0.771 [0.756, 0.788] |
+| gradient boosting, 9 features | 0.791 [0.773, 0.808] |
 
-**Early warning (AUROC by trajectory completion):**
+What this does and does not show:
 
-| 20% | 40% | 60% | 80% | 100% |
-|---|---|---|---|---|
-| 0.599 | 0.802 | 0.849 | 0.958 | 1.000 |
-
-The 100% number should be read skeptically, not as a headline — see
-[`docs/research/experiments.md`](docs/research/experiments.md) for why.
-An ablation confirms the signal isn't just a proxy for trajectory length:
-`trajectory_length` alone gets 0.555 AUROC (barely above chance) with the
-same split.
+- The 9-feature models beat single-feature baselines (~0.55), so the signal is
+  not just trajectory length.
+- At 20% completion the logistic model is near chance (0.596).
+- Leave-one-task-out gives the same score, which is expected because all tasks
+  are the same operation. It is not evidence of cross-task generalization.
+- On held-out fault profiles, within-profile AUROC for the logistic model
+  ranges from 0.59 to 0.80, lowest for the `wrong_tool` profiles.
+- An earlier headline of 0.893 AUROC included 80-100% prefixes, where the
+  outcome is already visible in the log. It is not an early-warning number.
 
 ## Limitations
 
 Full list, led by "the reference agent is not a real LLM":
 [`docs/research/limitations.md`](docs/research/limitations.md). Also
-covers: narrow task suite, feature collinearity in the model, no
-cross-validation, single-strategy intervention, and what's not measured
+covers: narrow task suite, feature collinearity in the model,
+uncalibrated probabilities, unvalidated failure detectors, single-strategy intervention, and what's not measured
 (cost, latency, scale).
 
 ## Security
@@ -232,7 +253,7 @@ make benchmark    # arl benchmark run benchmarks/smoke
 make dashboard    # uvicorn arl.dashboard.app:app --reload
 ```
 
-38 tests (unit, integration, end-to-end) pass; `ruff check` and
+128 tests (unit, integration, end-to-end) pass; `ruff check` and
 `mypy -p arl --strict` are both clean as of this writeup.
 
 ## Contributing

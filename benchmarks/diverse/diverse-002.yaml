@@ -1,0 +1,28 @@
+id: diverse-002
+description: log.txt contains log lines. Count the lines that start with ERROR and write only that number
+  to output.txt.
+category: coding
+difficulty: easy
+environment: sandboxed_fs
+grader:
+  kind: file_equals
+  config:
+    path: output.txt
+    expected: '3'
+timeout_seconds: 30.0
+max_steps: 8
+metadata:
+  initial_files:
+    log.txt: 'INFO boot ok
+
+      ERROR disk full
+
+      INFO retry
+
+      ERROR timeout
+
+      WARN slow
+
+      ERROR disk full
+
+      INFO done'

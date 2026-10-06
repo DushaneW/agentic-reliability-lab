@@ -1,0 +1,27 @@
+id: diverse-004
+description: data.csv has columns name,status,score. Compute the average score of the rows whose status
+  is ok and write it to output.txt rounded to 2 decimal places.
+category: tool_use
+difficulty: medium
+environment: sandboxed_fs
+grader:
+  kind: numeric_file_equals
+  config:
+    path: output.txt
+    expected: 6.67
+    tolerance: 0.005
+timeout_seconds: 30.0
+max_steps: 10
+metadata:
+  initial_files:
+    data.csv: 'name,status,score
+
+      alice,ok,7
+
+      bob,fail,3
+
+      carol,ok,9
+
+      dave,ok,4
+
+      erin,fail,8'

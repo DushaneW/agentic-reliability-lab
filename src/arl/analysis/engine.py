@@ -10,6 +10,7 @@ from __future__ import annotations
 from arl.analysis.detectors import (
     DetectorFinding,
     detect_error_recovery_failure,
+    detect_incorrect_output,
     detect_looping,
     detect_premature_termination,
     detect_repeated_tool_errors,
@@ -44,6 +45,7 @@ def diagnose(task: Task, trajectory: Trajectory, evaluation: EvaluationResult) -
             detect_premature_termination(events, task.max_steps, evaluation.success),
         ),
         (FailureCategory.TOOL_SELECTION_FAILURE, detect_tool_selection_failure(events)),
+        (FailureCategory.INCORRECT_OUTPUT, detect_incorrect_output(events)),
     ]
 
     best_category = FailureCategory.UNKNOWN_FAILURE

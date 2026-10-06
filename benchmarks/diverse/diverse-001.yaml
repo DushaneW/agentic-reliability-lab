@@ -1,0 +1,15 @@
+id: diverse-001
+description: input.txt contains one sentence. Count its words and write only that number to output.txt.
+category: coding
+difficulty: easy
+environment: sandboxed_fs
+grader:
+  kind: file_equals
+  config:
+    path: output.txt
+    expected: '13'
+timeout_seconds: 30.0
+max_steps: 8
+metadata:
+  initial_files:
+    input.txt: the quick brown fox jumps over the lazy dog while the cat sleeps

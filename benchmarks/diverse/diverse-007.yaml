@@ -1,0 +1,24 @@
+id: diverse-007
+description: Read report.txt and write the number of lines it contains to output.txt. (If the file is
+  not where you expect it, find it.)
+category: error_recovery
+difficulty: medium
+environment: sandboxed_fs
+grader:
+  kind: file_equals
+  config:
+    path: output.txt
+    expected: '4'
+timeout_seconds: 30.0
+max_steps: 10
+metadata:
+  initial_files:
+    reports/2024/report.txt: 'q1
+
+      q2
+
+      q3
+
+      q4
+
+      '

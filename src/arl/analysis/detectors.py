@@ -130,6 +130,30 @@ def detect_tool_selection_failure(events: list[TrajectoryEvent]) -> DetectorFind
     )
 
 
+def detect_incorrect_output(events: list[TrajectoryEvent]) -> DetectorFinding | None:
+    """The agent declared completion, no tool ever failed, yet the task failed.
+
+    This is a statement about what is visible in the log, not about *why*:
+    it could be bad reasoning, a misread instruction, or an unfaithful
+    shortcut. It is deliberately weak (0.3) so any more specific detector
+    (looping, error recovery, early stop) wins over it.
+    """
+    if _tool_errors(events):
+        return None
+    finished = [
+        e
+        for e in events
+        if e.event_type == EventType.RUN_FINISHED and e.payload.get("reason") == "agent_finished"
+    ]
+    if not finished or not _tool_calls(events):
+        return None
+    return DetectorFinding(
+        description="agent finished with no tool errors, but the grader rejected the final state",
+        event_ids=[finished[0].id],
+        weight=0.3,
+    )
+
+
 def detect_timeout(events: list[TrajectoryEvent]) -> DetectorFinding | None:
     timeouts = [
         e

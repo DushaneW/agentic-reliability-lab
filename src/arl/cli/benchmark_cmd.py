@@ -9,6 +9,14 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from arl.agents.base import Agent
+from arl.agents.llm import (
+    AnthropicClient,
+    ChatClient,
+    LLMAgent,
+    LLMClientError,
+    OpenAICompatClient,
+)
 from arl.agents.reference import agent_from_task_metadata
 from arl.analysis.engine import diagnose
 from arl.domain.run import Run
@@ -54,16 +62,46 @@ def run_benchmark(
     db: str = typer.Option("arl.db", help="SQLite database path"),
     seed: int = typer.Option(0, help="Base seed for the reference agent"),
     json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+    agent_kind: str = typer.Option("reference", "--agent", help="reference | llm"),
+    provider: str = typer.Option("anthropic", help="llm only: anthropic | openai-compat"),
+    model: str = typer.Option("", help="llm only: model name (required)"),
+    base_url: str = typer.Option(
+        "http://localhost:11434/v1", help="llm only: openai-compat endpoint (default: Ollama)"
+    ),
 ) -> None:
-    """Run every task in a benchmark suite with the reference agent and persist results."""
+    """Run every task in a benchmark suite and persist results.
+
+    The default is the scripted reference agent. `--agent llm` drives a real
+    model; it needs ANTHROPIC_API_KEY (anthropic) or a reachable endpoint
+    (openai-compat). Tasks that hit a transport error are skipped, not
+    recorded as agent failures.
+    """
+    if agent_kind not in ("reference", "llm"):
+        console.print(f"[red]Unknown --agent {agent_kind!r}[/red]")
+        raise typer.Exit(2)
+    llm_agent: Agent | None = None
+    if agent_kind == "llm":
+        if not model:
+            console.print("[red]--agent llm requires --model[/red]")
+            raise typer.Exit(2)
+        try:
+            llm_agent = LLMAgent(_make_client(provider, model, base_url), model)
+        except LLMClientError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(2) from exc
+
     tasks = load_benchmark(path)
     repo = Repository(db)
     rows: list[BenchmarkRow] = []
 
     for i, task in enumerate(tasks):
-        run = Run(task_id=task.id, agent_name="reference", seed=seed + i)
-        agent = agent_from_task_metadata(task, seed=run.seed)
-        outcome = run_task(task, agent, run)
+        agent = llm_agent or agent_from_task_metadata(task, seed=seed + i)
+        run = Run(task_id=task.id, agent_name=agent.name, seed=seed + i)
+        try:
+            outcome = run_task(task, agent, run)
+        except LLMClientError as exc:
+            console.print(f"[yellow]skipped {task.id}: {exc}[/yellow]")
+            continue
         evaluation = evaluate(task, outcome.task_result)
         diagnosis = diagnose(task, outcome.trajectory, evaluation)
 
@@ -85,6 +123,10 @@ def run_benchmark(
 
     repo.close()
 
+    if tasks and not rows:
+        console.print("[red]Every task was skipped; nothing was run.[/red]")
+        raise typer.Exit(1)
+
     if json_output:
         import json as json_module
 
@@ -100,3 +142,11 @@ def run_benchmark(
     console.print(table)
     n_success = sum(row.success for row in rows)
     console.print(f"\n{n_success}/{len(rows)} tasks passed")
+
+
+def _make_client(provider: str, model: str, base_url: str) -> ChatClient:
+    if provider == "anthropic":
+        return AnthropicClient(model)
+    if provider == "openai-compat":
+        return OpenAICompatClient(model, base_url=base_url)
+    raise LLMClientError(f"unknown provider {provider!r}")

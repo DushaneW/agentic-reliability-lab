@@ -23,27 +23,30 @@ from arl.runtime.runner import run_task
 
 FRACTIONS = (0.2, 0.4, 0.6, 0.8, 1.0)
 
-FAULT_PROFILES = (
-    FaultProfile(),  # clean
-    FaultProfile(wrong_tool_rate=0.1),
-    FaultProfile(repeat_action_rate=0.2),
-    FaultProfile(ignore_error_rate=0.3),
-    FaultProfile(premature_termination_rate=0.15),
-    FaultProfile(wrong_tool_rate=0.15, ignore_error_rate=0.3),
-    FaultProfile(wrong_tool_rate=0.3, repeat_action_rate=0.2, ignore_error_rate=0.4),
-    FaultProfile(
+# Named so that the profile is an explicit group key for evaluation
+# (leave-one-profile-out) and so run ids do not depend on hash().
+FAULT_PROFILES: dict[str, FaultProfile] = {
+    "clean": FaultProfile(),
+    "wrong_tool": FaultProfile(wrong_tool_rate=0.1),
+    "repeat": FaultProfile(repeat_action_rate=0.2),
+    "ignore_error": FaultProfile(ignore_error_rate=0.3),
+    "early_stop": FaultProfile(premature_termination_rate=0.15),
+    "wrong_tool_ignore_error": FaultProfile(wrong_tool_rate=0.15, ignore_error_rate=0.3),
+    "mixed_heavy": FaultProfile(wrong_tool_rate=0.3, repeat_action_rate=0.2, ignore_error_rate=0.4),
+    "mixed_severe": FaultProfile(
         wrong_tool_rate=0.3,
         repeat_action_rate=0.2,
         ignore_error_rate=0.5,
         premature_termination_rate=0.1,
     ),
-)
+}
 
 
 @dataclass
 class DatasetExample:
     run_id: str
     task_id: str
+    profile_id: str
     fraction: float
     features: FeatureVector
     label_failure: int  # 1 if the completed run failed, else 0
@@ -56,17 +59,12 @@ def generate_dataset(
     seed_counter = base_seed
 
     for task in tasks:
-        for profile in FAULT_PROFILES:
+        for profile_id, profile in FAULT_PROFILES.items():
             for _seed_offset in range(seeds_per_profile):
                 seed = seed_counter
                 seed_counter += 1
-                # A deterministic id (not uuid4()) is what makes the
-                # train/test split in model.py reproducible across runs:
-                # train_test_split_examples splits by run_id, and a random
-                # UUID would make that split land differently every time
-                # even with a fixed random_state, silently breaking the
-                # "reproducible" claim in docs/research/methodology.md.
-                run_id = f"{task.id}-fp{hash(profile) & 0xffff:04x}-s{seed}"
+                # Deterministic id (not uuid4()) so the run-level split is reproducible.
+                run_id = f"{task.id}-{profile_id}-s{seed}"
                 run = Run(task_id=task.id, agent_name="reference", seed=seed, id=run_id)
                 agent = ReferenceAgent(fault_profile=profile, seed=seed)
                 outcome = run_task(task, agent, run)
@@ -88,6 +86,7 @@ def generate_dataset(
                         DatasetExample(
                             run_id=run.id,
                             task_id=task.id,
+                            profile_id=profile_id,
                             fraction=fraction,
                             features=extract_features(prefix),
                             label_failure=label,

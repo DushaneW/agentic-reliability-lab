@@ -42,3 +42,19 @@ def test_feature_vector_as_list_matches_names_order() -> None:
 
     features = extract_features([])
     assert len(features.as_list()) == len(FEATURE_NAMES)
+
+
+def test_consecutive_error_pairs_counts_back_to_back_failed_calls() -> None:
+    call = {"tool_name": "calculator", "arguments": {}}
+    events = [
+        _event(0, EventType.TOOL_CALL, call),
+        _event(1, EventType.TOOL_ERROR, {"tool_name": "calculator"}),
+        _event(2, EventType.TOOL_CALL, call),
+        _event(3, EventType.TOOL_ERROR, {"tool_name": "calculator"}),
+        _event(4, EventType.TOOL_CALL, call),
+        _event(5, EventType.TOOL_RESULT, {"tool_name": "calculator", "success": True}),
+        _event(6, EventType.TOOL_CALL, call),
+        _event(7, EventType.TOOL_ERROR, {"tool_name": "calculator"}),
+    ]
+    # error, error, success, error -> exactly one adjacent error pair.
+    assert extract_features(events).values["consecutive_error_pairs"] == 1

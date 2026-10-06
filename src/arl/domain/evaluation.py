@@ -31,6 +31,7 @@ class FailureCategory(StrEnum):
     PREMATURE_TERMINATION = "premature_termination"
     ERROR_RECOVERY_FAILURE = "error_recovery_failure"
     TIMEOUT_FAILURE = "timeout_failure"
+    INCORRECT_OUTPUT = "incorrect_output"
     SAFETY_VIOLATION = "safety_violation"
     UNKNOWN_FAILURE = "unknown_failure"
     NONE = "none"

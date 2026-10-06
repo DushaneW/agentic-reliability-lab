@@ -41,10 +41,18 @@ def extract_features(events: list[TrajectoryEvent]) -> FeatureVector:
     repeated = sum(1 for a, b in zip(signatures, signatures[1:], strict=False) if a == b)
     distinct_signatures = len(set(signatures))
 
-    consecutive_error_pairs = 0
-    for a, b in zip(events, events[1:], strict=False):
-        if a.event_type == EventType.TOOL_ERROR and b.event_type == EventType.TOOL_ERROR:
-            consecutive_error_pairs += 1
+    # Pairs of back-to-back failed tool calls. Computed over the sequence of
+    # tool *outcomes*: in the raw log every error is preceded by its own
+    # TOOL_CALL event, so two TOOL_ERROR events are never adjacent and a
+    # raw-adjacency count is always 0.
+    outcomes = [
+        e.event_type
+        for e in events
+        if e.event_type in (EventType.TOOL_RESULT, EventType.TOOL_ERROR)
+    ]
+    consecutive_error_pairs = sum(
+        1 for a, b in zip(outcomes, outcomes[1:], strict=False) if a == b == EventType.TOOL_ERROR
+    )
 
     steps_since_last_error = float(len(events))
     for event in reversed(events):

@@ -1,0 +1,18 @@
+id: diverse-005
+description: a.txt and b.txt each contain numbers separated by spaces. Write the sum of all numbers from
+  both files to output.txt.
+category: multi_step
+difficulty: medium
+environment: sandboxed_fs
+grader:
+  kind: numeric_file_equals
+  config:
+    path: output.txt
+    expected: 44.5
+    tolerance: 1.0e-06
+timeout_seconds: 30.0
+max_steps: 10
+metadata:
+  initial_files:
+    a.txt: 12.5 7.25 3.0
+    b.txt: 20.0 1.75
