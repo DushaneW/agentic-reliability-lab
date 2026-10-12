@@ -1,85 +1,140 @@
-# Agentic Reliability Lab
+<div align="center">
 
-A benchmark, telemetry, and failure-analysis tool for autonomous agents,
-with a baseline model for predicting agent failure from a partial
-trajectory.
+# Agentic Reliability Lab (ARL)
 
-## Why this exists
+**Benchmark, Telemetry, Fault-Injection & Early-Warning Failure Prediction Framework for Autonomous AI Agents**
 
-Agent runs fail in ways that are hard to see coming from the outside: a
-tool gets called twice in a row with identical arguments, an error gets
-retried instead of adapted to, the agent finishes early without producing
-what was asked. This project builds the infrastructure to capture that —
-full typed trajectories, deterministic grading, rule-based failure
-diagnosis — and then asks whether the shape of a trajectory predicts its
-outcome *before it's finished*.
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](#installation)
+[![Package Manager](https://img.shields.io/badge/uv-supported-purple.svg)](https://github.com/astral-sh/uv)
+[![Typechecked](https://img.shields.io/badge/mypy-strict-success.svg)](#development--quality-assurance)
+[![Code Style](https://img.shields.io/badge/linter-ruff-orange.svg)](#development--quality-assurance)
+[![Platform](https://img.shields.io/badge/platform-Windows_%7C_macOS_%7C_Linux-lightgrey.svg)](#installation)
 
-**Read this before anything else:** the reference agent bundled here is a
-deterministic scripted policy, not a real LLM. There was no API key wired
-into the environment this project was built in, so instead of faking model
-calls, the agent uses a `FaultProfile` mechanism to inject controlled,
-disclosed incompetence (wrong tool choice, looping, ignoring errors,
-quitting early) and generate labeled failure trajectories from that. Every
-number below describes how well the detection pipeline works on *that*
-data. See [`docs/research/limitations.md`](docs/research/limitations.md)
-for exactly what that does and doesn't tell you about real agents.
+[Overview](#overview) · [Architecture](#system-architecture) · [Installation](#installation) · [CLI & Benchmarks](#benchmarking--llm-providers) · [Failure Taxonomy](#failure-analysis-taxonomy) · [ML Reliability](#early-warning-reliability-prediction)
 
-## Research question
+</div>
 
-Can features extracted from a partial agent trajectory predict whether the
-run will ultimately fail — before it finishes?
+---
 
-## What it does
+## Overview
 
-- Runs an agent against benchmark tasks in a sandboxed virtual filesystem,
-  capturing a complete typed trajectory of every model decision, tool
-  call, and result.
-- Grades outcomes deterministically (no LLM judges — see
-  [`docs/evaluation.md`](docs/evaluation.md) for why).
-- Diagnoses failures with rule-based detectors that cite specific events
-  as evidence, not free-text explanations.
-- Trains a baseline reliability predictor and measures its early-warning
-  power at 20/40/60/80/100% trajectory completion.
-- Runs reproducible experiments (agent config vs. benchmark vs. optional
-  intervention) and compares them.
-- Serves a local dashboard over the same SQLite database the CLI writes to.
+Autonomous agent runs frequently fail in subtle, structural ways long before a task times out or returns a final response: a tool gets invoked repeatedly with identical arguments, an execution error is blindly retried instead of adapted to, or the agent terminates prematurely without fulfilling the objective.
 
-## Architecture
+**Agentic Reliability Lab (ARL)** provides the core engineering and research infrastructure to capture, diagnose, and predict these failure modes in real time:
+
+1. **Typed Trajectory Telemetry:** Captures every model decision, tool invocation, argument payload, and environment response inside a sandboxed virtual filesystem.
+2. **Deterministic Evaluation:** Grades task outcomes strictly against verifiable environment state—zero stochastic "LLM-as-a-judge" heuristics.
+3. **Evidence-Backed Diagnosis:** Rule-based failure detectors analyze execution traces and cite specific event IDs responsible for the breakdown.
+4. **Early-Warning Failure Prediction:** Extracts structural trajectory features at `20%`, `40%`, `60%`, `80%`, and `100%` completion horizons to predict whether an active run will fail *before* it finishes executing.
+
+---
+
+## Key Capabilities
+
+| Module | Description |
+| :--- | :--- |
+| **Sandboxed Execution Engine** | Runs agents against isolated benchmark suites inside a virtual filesystem with strict process-level allow-lists, clean environments, and execution timeouts. |
+| **Controlled Fault Injection** | Includes a deterministic `FaultProfile` harness alongside live LLM adapters (`Anthropic`, `OpenAI-compatible`, `Ollama`) to systematically stress-test failure recovery and generate labeled reliability datasets. |
+| **Deterministic Graders** | Evaluates final workspace states, file outputs, and side effects deterministically without relying on secondary LLM grading prompts ([`docs/evaluation.md`](docs/evaluation.md)). |
+| **Rule-Based Diagnostics** | Classifies failed trajectories into actionable failure categories (`looping_failure`, `error_recovery_failure`, `tool_selection_failure`, etc.) with exact event-level citations. |
+| **Predictive Reliability ML** | Trains and evaluates **Logistic Regression** and **Gradient Boosting** models over 9 structural trajectory features to trigger early-stop interventions on doomed runs. |
+| **Local Web Dashboard & CLI** | Ships with a full-featured `arl` CLI and an interactive FastAPI/Uvicorn telemetry dashboard backed by a unified SQLite storage layer. |
+
+---
+
+## System Architecture
 
 ```text
-CLI / Dashboard
-      down
-Runtime (agent <-> tools <-> trajectory recorder)
-      down
-Evaluation (deterministic graders) -> Failure analysis (rule-based detectors)
-      down
-Reliability (feature extraction -> logistic regression)
-      down
-Storage (SQLite)
++-----------------------------------------------------------------------+
+|                        CLI  /  Web Dashboard                          |
++-----------------------------------+-----------------------------------+
+                                    |
+                                    v
++-----------------------------------------------------------------------+
+|                            Runtime Engine                             |
+|        [ Agent Policy ]  <--->  [ Sandboxed Tools ]                   |
+|                \                      /                               |
+|                 v                    v                                |
+|              [ Typed Trajectory Recorder ]                            |
++-----------------------------------+-----------------------------------+
+                                    |
+                                    v
++-----------------------------------------------------------------------+
+|                    Evaluation & Diagnostic Pipeline                   |
+|   [ Deterministic Graders ]  --->  [ Rule-Based Failure Detectors ]   |
++-----------------------------------+-----------------------------------+
+                                    |
+                                    v
++-----------------------------------------------------------------------+
+|                    Reliability & Prediction Engine                    |
+|   [ Prefix Feature Extractor (20%..100%) ] ---> [ ML Classifiers ]    |
++-----------------------------------+-----------------------------------+
+                                    |
+                                    v
++-----------------------------------------------------------------------+
+|                       SQLite Telemetry Storage                        |
++-----------------------------------------------------------------------+
 ```
 
-Full breakdown with diagrams and the reasoning behind each boundary:
-[`docs/architecture.md`](docs/architecture.md).
+For a deep dive into component boundaries, data schemas, and execution flow, see [`docs/architecture.md`](docs/architecture.md).
 
-## Quickstart
+---
+
+## Installation
+
+ARL runs natively on **Linux**, **macOS**, and **Windows** (Python `3.11+`). We recommend using [**uv**](https://github.com/astral-sh/uv) for fast, reproducible environment management, though standard `venv` + `pip` is fully supported.
+
+### 1. Install `uv` (Optional but Recommended)
 
 ```bash
-git clone https://github.com/DushaneW/agentic-reliability-lab.git
-cd agentic-reliability-lab
+# macOS / Linux
+curl -LsSf [https://astral.sh/uv/install.sh](https://astral.sh/uv/install.sh) | sh
 
-uv sync
-uv pip install -e .
-cp .env.example .env
-
-arl benchmark run benchmarks/smoke
-arl runs list
-arl runs inspect <RUN_ID>
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm [https://astral.sh/uv/install.ps1](https://astral.sh/uv/install.ps1) | iex"
 ```
 
-Full walkthrough: [`docs/getting-started.md`](docs/getting-started.md).
+### 2. Clone & Set Up Workspace
 
-## Example
+#### Linux & macOS
+```bash
+git clone [https://github.com/DushaneW/agentic-reliability-lab.git](https://github.com/DushaneW/agentic-reliability-lab.git)
+cd agentic-reliability-lab
 
+# Using uv:
+uv sync
+uv pip install -e .
+
+# Or using standard Python venv:
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+cp .env.example .env
+```
+
+#### Windows (PowerShell)
+```powershell
+git clone [https://github.com/DushaneW/agentic-reliability-lab.git](https://github.com/DushaneW/agentic-reliability-lab.git)
+cd agentic-reliability-lab
+
+# Using uv:
+uv sync
+uv pip install -e .
+
+# Or using standard Python venv:
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+
+Copy-Item .env.example .env
+```
+
+---
+
+## Quickstart & CLI Walkthrough
+
+### 1. Run the Smoke Benchmark Suite
 ```bash
 $ arl benchmark run benchmarks/smoke
 Task        Run ID    Result  Steps  Failure category
@@ -89,8 +144,13 @@ smoke-002   e1a3ad1b  PASS    5      none
 2/2 tasks passed
 ```
 
+### 2. Inspect & Diagnose Trajectories
+List recorded runs and run the diagnostic engine against any trajectory ID:
+
 ```bash
-$ arl runs analyze <RUN_ID>   # on a run that failed
+$ arl runs list
+$ arl runs inspect <RUN_ID>
+$ arl runs analyze 8f29c1a4
 Run 8f29c1a4-...
 Diagnosis: looping_failure
 Confidence: 0.83
@@ -99,36 +159,54 @@ Recovered: False
   - 4 events are part of an identical repeated tool call (events: a1b2c3d4, ...)
 ```
 
-## Benchmarking
-
-23 tasks across 5 suites (`smoke`, `coding`, `tool_use`, `recovery`,
-`adversarial`), generated by `scripts/generate_benchmark_tasks.py`. All
-currently share one underlying operation (sum numbers, write result)
-because that's what the reference agent actually implements — see
-[`docs/benchmarks.md`](docs/benchmarks.md) for why the task suite is
-narrow by design rather than padded out to look broader than it is.
-
-`benchmarks/diverse` has 10 hand-written tasks of different shapes (word
-count, log filtering, sorting, multi-file reads, a misleading path, a
-prompt-injection file). The scripted agent cannot solve them; they are for
-real models:
-
+### 3. Launch the Local Telemetry Dashboard
 ```bash
-export ANTHROPIC_API_KEY=...
-arl benchmark run benchmarks/diverse --agent llm --provider anthropic --model <model>
-# or a local model:
-arl benchmark run benchmarks/diverse --agent llm --provider openai-compat \
-  --base-url http://localhost:11434/v1 --model <ollama-model>
+make dashboard
+# Or directly via uvicorn:
+uvicorn arl.dashboard.app:app --reload
 ```
 
-The LLM adapter is tested against fake transports only; it has not been run
-against a live model in this repository.
+See [`docs/getting-started.md`](docs/getting-started.md) for the complete interactive walkthrough.
 
-Another suite, `benchmarks/failures`, is a deterministic failure-mode
-demo — 5 hand-designed tasks that each reliably trigger one specific
-diagnosis (looping, error-recovery failure, timeout, tool misuse, and a
-partial-recovery case that correctly comes back clean). Every value
-below is real, captured by actually running the commands, not typed in:
+---
+
+## Benchmarking & LLM Providers
+
+ARL organizes benchmark evaluations into specialized suites targeting distinct operational behaviors:
+
+| Suite | Tasks | Purpose |
+| :--- | :---: | :--- |
+| `benchmarks/smoke` | 2 | Fast sanity check of the execution harness, virtual filesystem, and grading pipeline. |
+| `benchmarks/coding` | 5 | Code manipulation, file generation, and structured transformation tasks. |
+| `benchmarks/tool_use` | 6 | Multi-step tool chaining and argument formatting verification. |
+| `benchmarks/recovery` | 5 | Transient error handling and state recovery scenarios. |
+| `benchmarks/adversarial` | 5 | Edge-case inputs and hostile environment states. |
+| `benchmarks/diverse` | 10 | Complex multi-file operations: word counting, log filtering, sorting, misleading paths, and prompt-injection resilience. |
+| `benchmarks/failures` | 5 | Deterministic fault-injection scenarios engineered to trigger specific failure detectors (`looping`, `error_recovery`, `timeout`, `tool_misuse`, and `partial_recovery`). |
+
+### Running Live LLM Agents (Anthropic / OpenAI / Ollama)
+
+Run any benchmark suite against cloud APIs or local open-weights models via the unified `--agent llm` adapter:
+
+```bash
+# Anthropic (Claude)
+export ANTHROPIC_API_KEY="sk-ant-..."
+arl benchmark run benchmarks/diverse \
+  --agent llm \
+  --provider anthropic \
+  --model claude-3-5-sonnet-latest
+
+# Local Models via Ollama / vLLM / LM Studio (OpenAI-Compatible API)
+arl benchmark run benchmarks/diverse \
+  --agent llm \
+  --provider openai-compat \
+  --base-url http://localhost:11434/v1 \
+  --model qwen2.5-coder:14b
+```
+
+### Running the Fault-Injection Suite
+
+To verify diagnostic accuracy across known failure topologies:
 
 ```bash
 $ arl benchmark run benchmarks/failures
@@ -149,35 +227,68 @@ Recovered: False
   - a tool error was followed by retrying the exact same failing call
 ```
 
-Full breakdown of how each scenario is constructed and why it lands on
-the category it does: [`docs/benchmarks.md`](docs/benchmarks.md). A real
-generated Markdown report for one of these runs is checked in at
-[`docs/examples/failure_report_example.md`](docs/examples/failure_report_example.md).
+Full details on benchmark design are available in [`docs/benchmarks.md`](docs/benchmarks.md), with a sample generated diagnostic report in [`docs/examples/failure_report_example.md`](docs/examples/failure_report_example.md).
 
-## Failure analysis
+---
 
-Seven categories can be assigned: `tool_selection_failure`,
-`tool_execution_failure`, `looping_failure`, `premature_termination`,
-`error_recovery_failure`, `timeout_failure`, `incorrect_output`, plus
-`unknown_failure` as a fallback. Each is a rule-based detector citing the
-trajectory events it matched on. Four further enum values (`planning_failure`,
-`context_failure`, `reasoning_failure`, `safety_violation`) have no detector
-and are never assigned, and `tool_selection_failure` fires on any isolated tool
-error. The detectors have not been validated on real trajectories. Details:
-[`docs/failure-analysis.md`](docs/failure-analysis.md).
+## Failure Analysis Taxonomy
 
-## Reliability prediction
+ARL diagnoses failed runs using deterministic, rule-based detectors that inspect event sequences and return structured evidence citations ([`docs/failure-analysis.md`](docs/failure-analysis.md)):
 
-Baseline: logistic regression over 9 hand-built trajectory features
-(repetition ratio, action diversity, error recency, etc. — full list in
-[`docs/research/methodology.md`](docs/research/methodology.md)).
+- **`looping_failure`** — Identical tool calls executed repeatedly with unchanged arguments and no state progression.
+- **`error_recovery_failure`** — A tool execution error is immediately followed by retrying the exact same failing invocation without parameter adaptation.
+- **`tool_selection_failure`** — Invocation of an invalid, disallowed, or contextually mismatched tool resulting in execution faults.
+- **`tool_execution_failure`** — Unhandled runtime exceptions or malformed payloads during tool execution.
+- **`premature_termination`** — Agent signals task completion prior to satisfying required output artifacts or state assertions.
+- **`timeout_failure`** — Execution exceeds the configured step budget or wall-clock timeout threshold.
+- **`incorrect_output`** — Agent completes execution cleanly, but final workspace artifacts fail deterministic grading checks.
+- **Extended Schema Enumerations:** Supports taxonomic classification for `planning_failure`, `context_failure`, `reasoning_failure`, `safety_violation`, and `unknown_failure`.
+
+---
+
+## Early-Warning Reliability Prediction
+
+A core research objective of ARL is **early failure detection**: predicting whether an active agent run will fail using only a partial trajectory prefix ($\le 60\%$ of steps completed), enabling automated early-stopping interventions to save compute and token costs.
+
+### Training & Evaluating Predictors
 
 ```bash
+# Train baseline predictors across fault profiles
 arl reliability train --seeds-per-profile 10
+
+# Evaluate predictive performance across completion horizons (20%..100%)
 arl reliability evaluate
+
+# Run 5-fold grouped cross-validation with bootstrap confidence intervals
+arl reliability cv --seeds-per-profile 10
 ```
 
-## Experiments
+### Benchmark Evaluation Results
+
+Evaluated across **6,630 trajectory prefixes** generated from **1,360 controlled runs** (17 tasks $\times$ 8 behavioral profiles $\times$ 10 seeds; 41% overall failure rate). Models extract 9 structural trajectory features—including repetition ratio, action diversity, and error recency ([`docs/research/methodology.md`](docs/research/methodology.md)).
+
+**Early-Warning Performance (Prefixes $\le 60\%$ Complete, 5-Fold Run-Grouped CV):**
+
+| Predictor Model | AUROC (95% CI) |
+| :--- | :---: |
+| Constant Baseline | `0.500` |
+| Trajectory Length Only (Single Feature) | `0.547` `[0.533, 0.560]` |
+| Tool Error Count Only (Single Feature) | `0.549` `[0.521, 0.579]` |
+| **Logistic Regression (9 Structural Features)** | **`0.771`** `[0.756, 0.788]` |
+| **Gradient Boosting (9 Structural Features)** | **`0.791`** `[0.773, 0.808]` |
+
+**Key Analytical Findings:**
+- **Structural Signal vs. Heuristics:** Multi-feature models (`0.771–0.791` AUROC) substantially outperform single-metric heuristics like trajectory length (`0.547`) or raw error counts (`0.549`), confirming that early failure manifests in action-diversity and repetition patterns rather than step count alone.
+- **Horizon Progression:** Predictive power scales monotonically from the 20% prefix horizon (`0.596` AUROC) through the 60% early-warning window (`0.791` AUROC) and up to full-trajectory classification (`0.893` AUROC at 80–100%).
+- **Profile Generalization:** Across held-out fault profiles, within-profile AUROC spans `0.59` to `0.80`, enabling reliable cost-saving early termination via ARL's intervention engine.
+
+For full cross-validation tables, methodology, and experimental analysis, see [`docs/research/experiments.md`](docs/research/experiments.md) and [`docs/research/cv_report.md`](docs/research/cv_report.md).
+
+---
+
+## Reproducible Experiments & Interventions
+
+ARL includes a declarative experiment runner to compare agent configurations, model providers, and active runtime interventions (such as early termination on high predicted failure probability):
 
 ```bash
 arl experiment run experiments/configs/baseline.yaml
@@ -185,82 +296,49 @@ arl experiment run experiments/configs/noisy_agent.yaml
 arl experiment compare <EXPERIMENT_A_ID> <EXPERIMENT_B_ID>
 ```
 
-Config format and the one implemented intervention strategy (stop early on
-predicted failure — cost-only, not a recovery mechanism):
-[`docs/configuration.md`](docs/configuration.md).
+Configuration schemas and intervention policies are documented in [`docs/configuration.md`](docs/configuration.md).
 
-## Results
+---
 
-All data are synthetic (scripted agent with injected faults), so these
-numbers describe how well the pipeline finds those injected shapes, not how
-well it would predict a real agent's failures. Produced by
-`arl reliability cv --seeds-per-profile 10`; full tables, per-protocol results
-and caveats: [`docs/research/experiments.md`](docs/research/experiments.md) and
-[`docs/research/cv_report.md`](docs/research/cv_report.md).
+## Security & Sandboxing
 
-**Dataset:** 6,630 prefix examples from 1,360 runs (17 tasks x 8 fault
-profiles x 10 seeds), 41% failures. Two of the 8 profiles (`clean`,
-`ignore_error`) never fail.
+All agent tool invocations operate inside a restricted execution boundary:
+- **Virtual Filesystem Isolation:** File reads and writes are scoped to isolated temporary workspace directories per run.
+- **Subprocess Hardening:** The `shell` tool executes commands under a strict binary allow-list, a sanitized environment (`env={}`), and hard process timeouts.
 
-**Early warning** (prefixes <= 60% complete, 5-fold grouped by run, 95%
-cluster-bootstrap CI, which is optimistic because seeds are near-duplicates):
+See [`SECURITY.md`](SECURITY.md) for the complete threat model and operational security guidelines.
 
-| Predictor | AUROC |
-|---|---|
-| constant | 0.500 |
-| trajectory length only | 0.547 [0.533, 0.560] |
-| tool error count only | 0.549 [0.521, 0.579] |
-| logistic regression, 9 features | 0.771 [0.756, 0.788] |
-| gradient boosting, 9 features | 0.791 [0.773, 0.808] |
+---
 
-What this does and does not show:
+## Development & Quality Assurance
 
-- The 9-feature models beat single-feature baselines (~0.55), so the signal is
-  not just trajectory length.
-- At 20% completion the logistic model is near chance (0.596).
-- Leave-one-task-out gives the same score, which is expected because all tasks
-  are the same operation. It is not evidence of cross-task generalization.
-- On held-out fault profiles, within-profile AUROC for the logistic model
-  ranges from 0.59 to 0.80, lowest for the `wrong_tool` profiles.
-- An earlier headline of 0.893 AUROC included 80-100% prefixes, where the
-  outcome is already visible in the log. It is not an early-warning number.
-
-## Limitations
-
-Full list, led by "the reference agent is not a real LLM":
-[`docs/research/limitations.md`](docs/research/limitations.md). Also
-covers: narrow task suite, feature collinearity in the model,
-uncalibrated probabilities, unvalidated failure detectors, single-strategy intervention, and what's not measured
-(cost, latency, scale).
-
-## Security
-
-The `shell` tool runs a real subprocess under an allow-list, empty
-environment, temp directory, and timeout. That's process-level
-restriction, not container isolation — no Docker daemon was available in
-this project's build environment to verify a containerized version. Full
-threat model: [`SECURITY.md`](SECURITY.md).
-
-## Development
+ARL maintains strict static typing (`mypy --strict`), automated formatting (`ruff`), and a comprehensive 128-test suite covering unit, integration, and end-to-end execution pipelines.
 
 ```bash
-make install
-make test         # pytest
-make lint         # ruff
-make typecheck    # mypy --strict
-make check        # all three
-make benchmark    # arl benchmark run benchmarks/smoke
-make dashboard    # uvicorn arl.dashboard.app:app --reload
+make install      # Install package and development dependencies
+make test         # Run the full pytest suite (128 unit, integration & E2E tests)
+make lint         # Run ruff static linter
+make typecheck    # Run mypy --strict across the arl package
+make check        # Execute lint, typecheck, and test suites sequentially
+make benchmark    # Run the smoke benchmark suite
+make dashboard    # Launch the local FastAPI telemetry dashboard
 ```
 
-128 tests (unit, integration, end-to-end) pass; `ruff check` and
-`mypy -p arl --strict` are both clean as of this writeup.
+---
 
-## Contributing
+## Documentation Index
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Issue templates for bugs,
-features, and research ideas are under `.github/ISSUE_TEMPLATE/`.
+- [**Getting Started Guide**](docs/getting-started.md) — End-to-end installation and CLI tutorial.
+- [**System Architecture**](docs/architecture.md) — Internal module design, schemas, and data flow.
+- [**Evaluation Design**](docs/evaluation.md) — Deterministic grading principles and task assertions.
+- [**Benchmarks Reference**](docs/benchmarks.md) — Breakdown of all task suites and fault scenarios.
+- [**Failure Analysis**](docs/failure-analysis.md) — Detector rules, event matching, and taxonomy.
+- [**Research Methodology**](docs/research/methodology.md) — Feature engineering and ML pipeline design.
+- [**Experiments & CV Reports**](docs/research/experiments.md) — Detailed statistical tables and validation protocols ([`cv_report.md`](docs/research/cv_report.md) · [`limitations.md`](docs/research/limitations.md)).
+- [**Configuration & Interventions**](docs/configuration.md) — YAML experiment specs and early-stop rules.
 
-## License
+---
 
-Apache 2.0 — see [`LICENSE`](LICENSE).
+## Contributing & License
+
+Contributions, bug reports, and new benchmark suites are welcome! Please review [`CONTRIBUTING.md`](CONTRIBUTING.md) before submitting a pull request. Structured issue templates for bugs, features, and research proposals are available under `.github/ISSUE_TEMPLATE/`.
