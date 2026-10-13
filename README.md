@@ -46,15 +46,15 @@ Autonomous agent runs frequently fail in subtle, structural ways long before a t
 
 ```text
 +-----------------------------------------------------------------------+
-|                        CLI  /  Web Dashboard                          |
+|                         CLI  /  Web Dashboard                         |
 +-----------------------------------+-----------------------------------+
                                     |
                                     v
 +-----------------------------------------------------------------------+
 |                            Runtime Engine                             |
 |        [ Agent Policy ]  <--->  [ Sandboxed Tools ]                   |
-|                \                      /                               |
-|                 v                    v                                |
+|                \                     /                                |
+|                 v                   v                                 |
 |              [ Typed Trajectory Recorder ]                            |
 +-----------------------------------+-----------------------------------+
                                     |
@@ -72,7 +72,7 @@ Autonomous agent runs frequently fail in subtle, structural ways long before a t
                                     |
                                     v
 +-----------------------------------------------------------------------+
-|                       SQLite Telemetry Storage                        |
+|                        SQLite Telemetry Storage                       |
 +-----------------------------------------------------------------------+
 ```
 
@@ -182,7 +182,6 @@ ARL organizes benchmark evaluations into specialized suites targeting distinct o
 | `benchmarks/recovery` | 5 | Transient error handling and state recovery scenarios. |
 | `benchmarks/adversarial` | 5 | Edge-case inputs and hostile environment states. |
 | `benchmarks/diverse` | 10 | Complex multi-file operations: word counting, log filtering, sorting, misleading paths, and prompt-injection resilience. |
-| `benchmarks/failures` | 5 | Deterministic fault-injection scenarios engineered to trigger specific failure detectors (`looping`, `error_recovery`, `timeout`, `tool_misuse`, and `partial_recovery`). |
 
 ### Running Live LLM Agents (Anthropic / OpenAI / Ollama)
 
@@ -204,29 +203,6 @@ arl benchmark run benchmarks/diverse \
   --model qwen2.5-coder:14b
 ```
 
-### Running the Fault-Injection Suite
-
-To verify diagnostic accuracy across known failure topologies:
-
-```bash
-$ arl benchmark run benchmarks/failures
-Task                      Run ID    Result  Steps  Failure category
-failure-error-recovery…   fef6f0f5  FAIL    5      error_recovery_failure
-failure-looping-001       2e1ed20c  FAIL    5      looping_failure
-failure-partial-recove…   c87efe4e  PASS    5      none
-failure-timeout-001       1b44f83a  FAIL    0      timeout_failure
-failure-tool-misuse-001   88a77148  FAIL    5      tool_selection_failure
-
-1/5 tasks passed
-
-$ arl runs analyze fef6f0f5
-Diagnosis: error_recovery_failure
-Confidence: 0.95
-Wasted tool calls: 3
-Recovered: False
-  - a tool error was followed by retrying the exact same failing call
-```
-
 Full details on benchmark design are available in [`docs/benchmarks.md`](docs/benchmarks.md), with a sample generated diagnostic report in [`docs/examples/failure_report_example.md`](docs/examples/failure_report_example.md).
 
 ---
@@ -242,7 +218,6 @@ ARL diagnoses failed runs using deterministic, rule-based detectors that inspect
 - **`premature_termination`** — Agent signals task completion prior to satisfying required output artifacts or state assertions.
 - **`timeout_failure`** — Execution exceeds the configured step budget or wall-clock timeout threshold.
 - **`incorrect_output`** — Agent completes execution cleanly, but final workspace artifacts fail deterministic grading checks.
-- **Extended Schema Enumerations:** Supports taxonomic classification for `planning_failure`, `context_failure`, `reasoning_failure`, `safety_violation`, and `unknown_failure`.
 
 ---
 
@@ -338,7 +313,3 @@ make dashboard    # Launch the local FastAPI telemetry dashboard
 - [**Configuration & Interventions**](docs/configuration.md) — YAML experiment specs and early-stop rules.
 
 ---
-
-## Contributing & License
-
-Contributions, bug reports, and new benchmark suites are welcome! Please review [`CONTRIBUTING.md`](CONTRIBUTING.md) before submitting a pull request. Structured issue templates for bugs, features, and research proposals are available under `.github/ISSUE_TEMPLATE/`.
