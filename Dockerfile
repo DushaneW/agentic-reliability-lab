@@ -17,7 +17,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock* README.md ./
 COPY src ./src
 
-RUN uv sync --frozen --no-dev 2>/dev/null || uv sync --no-dev
+RUN uv sync --frozen --no-dev
 
 RUN uv pip install -e .
 

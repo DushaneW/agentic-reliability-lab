@@ -72,8 +72,22 @@ DEFAULT_TIMEOUT_SECONDS = 5.0
 # of coreutils. See module docstring for why this exists instead of
 # shelling out to real OS binaries.
 _RUNNER_SCRIPT = r"""
+import os
 import re
 import sys
+
+# Every path argument is resolved (symlinks included) and must stay inside the
+# working directory the tool created. Without this, `cat /etc/passwd` or
+# `cat ../../x` reads arbitrary host files, since the process runs with the
+# host user's file permissions.
+_ROOT = os.path.realpath(".")
+
+
+def _confined(path):
+    resolved = os.path.realpath(path)
+    if resolved != _ROOT and not resolved.startswith(_ROOT + os.sep):
+        raise PermissionError("path escapes the working directory")
+    return resolved
 
 
 def _echo(args):
@@ -82,15 +96,13 @@ def _echo(args):
 
 
 def _ls(args):
-    import os
-
     for entry in sorted(os.listdir(".")):
         sys.stdout.write(entry + "\n")
     return 0
 
 
 def _read_lines(path):
-    with open(path, encoding="utf-8") as f:
+    with open(_confined(path), encoding="utf-8") as f:
         return f.readlines()
 
 
@@ -105,7 +117,7 @@ def _cat(args):
     code = 0
     for path in args:
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(_confined(path), encoding="utf-8") as f:
                 sys.stdout.write(f.read())
         except OSError as exc:
             sys.stderr.write(f"cat: {path}: {exc}\n")
@@ -120,7 +132,8 @@ def _wc(args):
     code = 0
     for path in args:
         try:
-            text = open(path, encoding="utf-8").read()
+            with open(_confined(path), encoding="utf-8") as f:
+                text = f.read()
         except OSError as exc:
             sys.stderr.write(f"wc: {path}: {exc}\n")
             code = 1
@@ -148,7 +161,7 @@ def _grep(args):
     matched = False
     for path in paths:
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(_confined(path), encoding="utf-8") as f:
                 for line in f:
                     if regex.search(line):
                         _write_line(line)
@@ -196,7 +209,14 @@ def _head_or_tail(args, take_from_end):
     n = 10
     rest = list(args)
     if rest[:1] == ["-n"] and len(rest) >= 2:
-        n = int(rest[1])
+        try:
+            n = int(rest[1])
+        except ValueError:
+            sys.stderr.write(f"invalid number of lines: {rest[1]}\n")
+            return 1
+        if n < 0:
+            sys.stderr.write(f"invalid number of lines: {rest[1]}\n")
+            return 1
         rest = rest[2:]
     if not rest:
         sys.stderr.write("missing operand\n")
@@ -256,6 +276,12 @@ class ShellTool(Tool):
     ) -> None:
         self.workdir_files = workdir_files or {}
         self.timeout = timeout
+        for name in self.workdir_files:
+            parts = Path(name).parts
+            if Path(name).is_absolute() or ".." in parts or not parts:
+                raise ValueError(
+                    f"workdir file name must be a relative path inside the sandbox: {name!r}"
+                )
 
     def execute(self, arguments: dict[str, Any]) -> str:
         command = arguments.get("command")
@@ -279,14 +305,21 @@ class ShellTool(Tool):
         with tempfile.TemporaryDirectory(prefix="arl-shell-") as tmpdir:
             tmp_path = Path(tmpdir)
             for name, content in self.workdir_files.items():
-                (tmp_path / name).write_text(content)
+                target = tmp_path / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
 
             try:
                 proc = subprocess.run(  # noqa: S603
-                    [sys.executable, "-c", _RUNNER_SCRIPT, *parts],
+                    # -I: isolated mode (ignores PYTHON* env vars and does not put the
+                    # working directory on sys.path, so a task file called re.py cannot
+                    # shadow the stdlib). -X utf8: same text encoding on every platform.
+                    [sys.executable, "-I", "-X", "utf8", "-c", _RUNNER_SCRIPT, *parts],
                     cwd=tmpdir,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=self.timeout,
                     env={},  # deliberately empty: no host secrets reach the subprocess
                 )

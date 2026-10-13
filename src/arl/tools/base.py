@@ -59,6 +59,17 @@ class Tool(ABC):
                 error=f"{exc.error_type}: {exc.message}",
                 duration_seconds=time.monotonic() - start,
             )
+        except Exception as exc:
+            # A bug in a tool, or input it did not anticipate, must not abort the
+            # whole run (and with it a benchmark batch): record it as a failed
+            # tool call like any other error.
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                output="",
+                error=f"unexpected_error: {type(exc).__name__}: {exc}",
+                duration_seconds=time.monotonic() - start,
+            )
 
 
 class ToolRegistry:

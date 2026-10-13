@@ -1,14 +1,13 @@
 """Intervention strategies triggered by the reliability model during a run.
 
 An intervention fires when predicted failure probability crosses a
-threshold. The only strategy implemented is `reset_on_repeat`: if the agent
-is about to repeat its immediately preceding action (the clearest, cheapest
-signal available without a real LLM to re-plan with), force a `finish`
-instead of letting it loop for the rest of the step budget. This is a real,
-measurable mechanism, not a stand-in for a more sophisticated re-planner —
-see docs/research/limitations.md for what a "critic" or "re-plan"
-intervention would require that this system does not yet have (a second
-model call).
+threshold. The only strategy implemented is stop-on-predicted-failure: if the
+model's probability for the run so far is at or above the threshold and the
+agent proposes another tool call, the proposal is replaced by a `finish`. It
+saves the remaining steps of a run that is probably doomed; it does not
+recover the run. See docs/research/limitations.md for what a "critic" or
+"re-plan" intervention would require that this system does not yet have (a
+second model call).
 """
 
 from __future__ import annotations

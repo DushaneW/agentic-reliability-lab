@@ -9,7 +9,7 @@ bottleneck at this dataset size.
 
 from __future__ import annotations
 
-import pickle
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,6 +38,13 @@ class EvalMetrics:
     per_fraction_auroc: dict[float, float]
 
 
+MODEL_FORMAT = "arl-logreg-v1"
+
+
+class ModelFormatError(ValueError):
+    """The model file is not a valid ARL model."""
+
+
 class ReliabilityModel:
     def __init__(self) -> None:
         self.classifier = LogisticRegression(max_iter=1000, class_weight="balanced")
@@ -55,15 +62,60 @@ class ReliabilityModel:
         return float(self.classifier.predict_proba([feature_vector])[0][1])
 
     def save(self, path: str | Path) -> None:
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "wb") as f:
-            pickle.dump(self.classifier, f)
+        """Write the fitted coefficients as JSON.
+
+        Not pickle: unpickling a file executes arbitrary code, and a model file is
+        exactly the kind of artifact people download and share. The JSON also does
+        not depend on the scikit-learn version that produced it.
+        """
+        if not self.is_trained:
+            raise RuntimeError("Model has not been trained")
+        payload = {
+            "format": MODEL_FORMAT,
+            "feature_names": list(FEATURE_NAMES),
+            "coef": self.classifier.coef_.tolist(),
+            "intercept": self.classifier.intercept_.tolist(),
+            "classes": self.classifier.classes_.tolist(),
+        }
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
     @classmethod
     def load(cls, path: str | Path) -> ReliabilityModel:
+        source = Path(path)
+        if source.suffix in {".pkl", ".pickle"}:
+            raise ModelFormatError(
+                f"{source}: pickle models are no longer supported because loading one "
+                "executes arbitrary code. Retrain with `arl reliability train` to "
+                "produce a .json model."
+            )
+        try:
+            data = json.loads(source.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ModelFormatError(f"{source}: not valid JSON: {exc.msg}") from exc
+        except UnicodeDecodeError as exc:
+            raise ModelFormatError(f"{source}: not a text file (binary or pickle?)") from exc
+        if not isinstance(data, dict) or data.get("format") != MODEL_FORMAT:
+            raise ModelFormatError(f"{source}: unsupported model format")
+        if data.get("feature_names") != FEATURE_NAMES:
+            raise ModelFormatError(
+                f"{source}: feature set differs from this version of arl; retrain the model"
+            )
+        try:
+            coef = np.array(data["coef"], dtype=float)
+            intercept = np.array(data["intercept"], dtype=float)
+            classes = np.array(data["classes"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ModelFormatError(f"{source}: malformed model data: {exc}") from exc
+        expected_coef = (1, len(FEATURE_NAMES))
+        if coef.shape != expected_coef or intercept.shape != (1,) or classes.shape != (2,):
+            raise ModelFormatError(f"{source}: unexpected coefficient shapes")
         model = cls()
-        with open(path, "rb") as f:
-            model.classifier = pickle.load(f)  # noqa: S301
+        model.classifier.coef_ = coef
+        model.classifier.intercept_ = intercept
+        model.classifier.classes_ = classes
+        model.classifier.n_features_in_ = len(FEATURE_NAMES)
         model.is_trained = True
         return model
 

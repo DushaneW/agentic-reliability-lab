@@ -5,7 +5,26 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- `shell` tool: the embedded runner opened any path it was given, so an agent
+  could `cat /etc/passwd` or `cat ../../.env` and read host files with the host
+  user's permissions. Every path argument is now resolved and must stay inside
+  the scratch directory. The interpreter also starts in isolated mode (`-I`),
+  and workdir file names are validated.
+- Dashboard: run ids, task ids and tool payloads were interpolated into HTML
+  strings and inline `onclick` attributes (stored XSS via agent output or an
+  imported JSONL file). The page now builds DOM nodes with `textContent` only
+  and sends a nonce-based CSP.
+- Reliability models are stored as JSON instead of pickle. `ReliabilityModel.load`
+  refuses `.pkl` files, and `models/reliability_model.pkl` is removed. Retraining
+  (`arl reliability train --seeds-per-profile 10`) reproduces
+  `models/reliability_metrics.json` byte for byte.
+
 ### Added
+
+- Regression tests for the shell escape, calculator edge cases, tool crash
+  handling, model persistence and the dashboard (128 -> 148 tests).
 
 - `arl reliability cv`: grouped cross-validation (by run, task, profile), five
   predictors including single-feature baselines, cluster-bootstrap CIs, Brier
@@ -21,6 +40,25 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `Tool.run` only caught `ToolError`, so any other exception aborted the run.
+  It now records `unexpected_error: <type>: <message>` as a failed tool call.
+- `calculator`: `9**9**9`, `10**400` (OverflowError) and `(-8)**0.5` (TypeError)
+  escaped the tool as exceptions; they are now tool errors, as are non-finite
+  results, non-string expressions and null bytes.
+- `shell`: `head -n abc f` printed a Python traceback; file contents are written
+  and read as UTF-8 on every platform.
+- README: broken code blocks (`[url](url)` inside `curl`/`git clone` commands),
+  wrong Python version (3.11+ vs `requires-python >=3.12`), a nonexistent
+  `.[dev]` extra, wrong suite sizes, and a "0.893 AUROC at 80-100%" claim that
+  contradicted `cv_report.md`. The results section now states what the
+  synthetic data can and cannot show. The failure taxonomy lists which
+  categories actually have detectors.
+- `experiments/intervention.py` docstring described a `reset_on_repeat`
+  strategy that does not exist; the code implements stop-on-predicted-failure.
+- `.github/workflows/security.yml` only ran on pushes to `main`; the default
+  branch is `master`.
+- `Dockerfile` no longer hides `uv sync` errors; `docker-compose.yml` publishes
+  the unauthenticated dashboard on 127.0.0.1 only.
 - `consecutive_error_pairs` was always 0 (it counted adjacent `tool_error`
   events, which never occur). It now counts back-to-back failed tool outcomes.
 - CI did not run on pushes: workflow listed `main`, default branch is `master`.

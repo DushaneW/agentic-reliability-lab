@@ -13,7 +13,8 @@ Generates a labeled dataset (`arl/reliability/dataset.py`) from the
 benchmark suite under 8 fault profiles, trains a logistic regression
 (`arl/reliability/model.py`), and writes:
 
-- `models/reliability_model.pkl` — the fitted scikit-learn classifier
+- `models/reliability_model.json` — the fitted logistic-regression coefficients (plain JSON;
+  pickle files are refused because loading one executes code)
 - `models/reliability_metrics.json` — AUROC/AUPRC/precision/recall/F1,
   per-completion-fraction AUROC, and feature importances from this run
 
@@ -23,7 +24,7 @@ benchmark suite under 8 fault profiles, trains a logistic regression
 from arl.reliability.model import ReliabilityModel
 from arl.reliability.features import extract_features
 
-model = ReliabilityModel.load("models/reliability_model.pkl")
+model = ReliabilityModel.load("models/reliability_model.json")
 probability = model.predict_proba(extract_features(trajectory_events).as_list())
 ```
 

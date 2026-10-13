@@ -36,6 +36,14 @@ relying on it for anything beyond running the bundled benchmark suite.
   interpolated into a shell string.
 - Runs in a fresh `tempfile.TemporaryDirectory()`, populated only with the
   files explicitly passed to the tool.
+- Confines every path argument to that directory. The embedded runner resolves
+  each path (symlinks included) and refuses anything outside the scratch
+  directory, so `cat /etc/passwd` and `cat ../../x` fail. Earlier versions did
+  not do this: the subprocess ran with the host user's file permissions and
+  could read any host file the user could, including `.env` files. Names of the
+  files placed in the scratch directory are validated the same way.
+- Starts the interpreter in isolated mode (`-I`), so environment variables and
+  files in the scratch directory cannot change which modules the runner imports.
 - Runs with `env={}` — the subprocess receives no environment variables at
   all, so host secrets (API keys, credentials, etc. that might be in the
   calling process's environment) cannot leak into a tool call via `os.environ`.
@@ -71,10 +79,13 @@ sandbox individual tool calls.
 
 ## Secrets
 
-- `.env.example` documents the only environment variable the project reads
-  today (`ARL_DB_PATH`, a local file path — not a secret). There is no API
-  key in this repository because the reference agent does not call an
-  external model provider (see `docs/research/limitations.md`).
+- `.env.example` lists the environment variables the project reads.
+  `ANTHROPIC_API_KEY` (and optionally `OPENAI_API_KEY` for an OpenAI-compatible
+  endpoint) are read only when you run `arl benchmark run --agent llm`. The
+  scripted reference agent needs no credentials. `.env` is git-ignored; never
+  commit it.
+- With `--agent llm`, task descriptions and tool output are sent to the model
+  provider you configure.
 - `arl/telemetry/redaction.py` applies best-effort pattern-based redaction
   (API-key-shaped strings, `key=`/`token=`/`password=` patterns, long
   base64-looking blobs) to every string value written into a trajectory
@@ -93,6 +104,15 @@ sandbox individual tool calls.
 - No protection against a task's own `initial_files` content being
   adversarially large (a benchmark author could write a task with a
   multi-gigabyte `input.txt`); task files are currently trusted input.
+- The dashboard (`arl.dashboard.app`) has no authentication. Run it on
+  localhost only; do not expose it on a network. Run ids, task ids and tool
+  payloads can originate from an agent or an imported JSONL file, so the page
+  treats them as untrusted: it inserts them with `textContent`, never as HTML,
+  and each response carries a nonce-based Content-Security-Policy. An earlier
+  version built HTML strings from this data (stored XSS).
+- Reliability models are plain JSON. `ReliabilityModel.load` refuses `.pkl`
+  files: unpickling executes arbitrary code, and earlier versions of this
+  project shipped and loaded a pickled model.
 - The SQLite database has no encryption at rest and no access control —
   it's a local single-user tool, and `arl.db` should be treated like any
   other local file containing your run history.

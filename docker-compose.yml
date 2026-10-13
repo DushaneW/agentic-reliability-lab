@@ -6,7 +6,8 @@ services:
     build: .
     entrypoint: ["uv", "run", "uvicorn", "arl.dashboard.app:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
-      - "8000:8000"
+      # The dashboard has no authentication: publish it on localhost only.
+      - "127.0.0.1:8000:8000"
     volumes:
       - arl-data:/data
     environment:

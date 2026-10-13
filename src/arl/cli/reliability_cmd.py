@@ -25,7 +25,7 @@ from arl.reliability.model import (
 app = typer.Typer(help="Train and evaluate the reliability predictor.")
 console = Console()
 
-DEFAULT_MODEL_PATH = "models/reliability_model.pkl"
+DEFAULT_MODEL_PATH = "models/reliability_model.json"
 DEFAULT_METRICS_PATH = "models/reliability_metrics.json"
 
 
@@ -55,7 +55,7 @@ def train(
 
     metrics = evaluate_model(model, test_examples)
     Path(metrics_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(metrics_path, "w") as f:
+    with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(
             {
                 "auroc": metrics.auroc,
@@ -100,7 +100,7 @@ def cross_validate_cmd(
     console.print(report)
     if output:
         Path(output).parent.mkdir(parents=True, exist_ok=True)
-        Path(output).write_text(report)
+        Path(output).write_text(report, encoding="utf-8")
 
 
 @app.command("score")
