@@ -98,7 +98,7 @@ moving past this baseline.
 
 `arl reliability train` regenerates the dataset with a fixed base seed,
 splits by run, trains, evaluates on the held-out split, and writes both
-the model (`models/reliability_model.pkl`) and metrics
+the model (`models/reliability_model.json`) and metrics
 (`models/reliability_metrics.json`) to disk. Re-running it end to end
 reproduces the numbers in `docs/research/experiments.md` exactly — verified
 by running `arl reliability train --seeds-per-profile 10` twice in a row

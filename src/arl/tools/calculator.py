@@ -7,6 +7,7 @@ cannot be used to execute arbitrary Python.
 from __future__ import annotations
 
 import ast
+import math
 import operator
 from typing import Any
 
@@ -54,12 +55,23 @@ class CalculatorTool(Tool):
         expression = arguments.get("expression")
         if not expression:
             raise ToolError("'expression' is required", error_type="invalid_arguments")
+        if not isinstance(expression, str):
+            raise ToolError("'expression' must be a string", error_type="invalid_arguments")
         try:
             tree = ast.parse(expression, mode="eval")
-        except SyntaxError as exc:
+        except (SyntaxError, ValueError, RecursionError, MemoryError) as exc:
             raise ToolError(f"Could not parse expression: {exc}", "invalid_arguments") from exc
         try:
             result = _eval_node(tree)
         except ZeroDivisionError as exc:
             raise ToolError("Division by zero", error_type="execution_error") from exc
+        except OverflowError as exc:
+            raise ToolError("Result is too large", error_type="execution_error") from exc
+        except (TypeError, ValueError) as exc:
+            # e.g. (-8) ** 0.5 yields a complex number, which float() rejects.
+            raise ToolError("Result is not a real number", error_type="execution_error") from exc
+        except RecursionError as exc:
+            raise ToolError("Expression is nested too deeply", "invalid_arguments") from exc
+        if not math.isfinite(result):
+            raise ToolError("Result is not finite", error_type="execution_error")
         return repr(result)

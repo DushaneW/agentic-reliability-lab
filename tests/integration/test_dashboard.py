@@ -57,3 +57,67 @@ def test_dashboard_endpoints_serve_real_data(tmp_path: Path, sum_task, monkeypat
     index = client.get("/")
     assert index.status_code == 200
     assert "Agentic Reliability Lab" in index.text
+
+
+# --- the page must not turn untrusted run data into HTML --------------------
+
+
+def test_index_page_has_no_html_injection_sinks(monkeypatch) -> None:  # noqa: ANN001
+    import importlib
+    import re
+
+    from arl.dashboard import app as dashboard_module
+
+    importlib.reload(dashboard_module)
+    client = TestClient(dashboard_module.app)
+    response = client.get("/")
+    assert response.status_code == 200
+    page = response.text
+
+    # Run ids, task ids and tool payloads reach the page through the JSON API.
+    # Building HTML strings from them (innerHTML, inline handlers) is XSS.
+    assert "innerHTML" not in page
+    assert "onclick" not in page
+    assert "outerHTML" not in page
+    assert "insertAdjacentHTML" not in page
+
+    nonce = re.search(r"script-src 'nonce-([^']+)'", response.headers["content-security-policy"])
+    assert nonce is not None
+    assert f'<script nonce="{nonce.group(1)}">' in page
+    assert "unsafe-inline" not in response.headers["content-security-policy"]
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_csp_nonce_differs_per_response() -> None:
+    import importlib
+
+    from arl.dashboard import app as dashboard_module
+
+    importlib.reload(dashboard_module)
+    client = TestClient(dashboard_module.app)
+    first = client.get("/").headers["content-security-policy"]
+    second = client.get("/").headers["content-security-policy"]
+    assert first != second
+
+
+def test_hostile_run_data_is_returned_as_json_not_html(
+    tmp_path: Path, monkeypatch  # noqa: ANN001
+) -> None:
+    import importlib
+
+    hostile = "<img src=x onerror=alert(1)>"
+    db_path = tmp_path / "hostile.db"
+    repo = Repository(db_path)
+    run = Run(task_id=hostile, agent_name="'><script>alert(1)</script>")
+    repo.save_run(run)
+    repo.close()
+    monkeypatch.setenv("ARL_DB_PATH", str(db_path))
+
+    from arl.dashboard import app as dashboard_module
+
+    importlib.reload(dashboard_module)
+    client = TestClient(dashboard_module.app)
+    runs = client.get("/api/runs")
+    assert runs.headers["content-type"].startswith("application/json")
+    assert runs.json()[0]["task_id"] == hostile

@@ -33,6 +33,6 @@ Per-task grader configuration is documented in `docs/benchmarks.md`.
 
 ## Reliability model paths
 
-`arl reliability train`/`evaluate` default to `models/reliability_model.pkl`
+`arl reliability train`/`evaluate` default to `models/reliability_model.json`
 and `models/reliability_metrics.json`; override with `--model-path` /
 `--metrics-path`.

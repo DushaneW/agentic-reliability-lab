@@ -17,7 +17,7 @@ def test_score_reports_labeled_auroc(tmp_path: Path) -> None:
     tasks = load_benchmark("benchmarks/smoke")
     model = ReliabilityModel()
     model.fit(generate_dataset(tasks, seeds_per_profile=2))
-    model_path = tmp_path / "m.pkl"
+    model_path = tmp_path / "m.json"
     model.save(model_path)
 
     ok = {"tool": "calculator", "arguments": {"expression": "1+1"}, "result": "2"}
@@ -39,8 +39,10 @@ def test_score_reports_labeled_auroc(tmp_path: Path) -> None:
 
 
 def test_score_rejects_malformed_file(tmp_path: Path) -> None:
-    model_path = tmp_path / "m.pkl"
-    ReliabilityModel().save(model_path)
+    model_path = tmp_path / "m.json"
+    model = ReliabilityModel()
+    model.fit(generate_dataset(load_benchmark("benchmarks/smoke"), seeds_per_profile=2))
+    model.save(model_path)
     data = tmp_path / "t.jsonl"
     data.write_text("nope")
     result = runner.invoke(

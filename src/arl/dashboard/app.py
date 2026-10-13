@@ -5,12 +5,23 @@ A single FastAPI app: a handful of JSON endpoints over the same
 with vanilla JS. No frontend build step, no framework — the data volume
 (hundreds of runs on a laptop) doesn't justify one, and it keeps `arl
 dashboard` a `pip install`-only feature.
+
+Everything the page shows (run ids, task ids, tool arguments, tool output) can
+originate from an agent or from an imported JSONL file, so it is untrusted.
+The page therefore never builds HTML from it: rows are created with DOM APIs
+and `textContent`, and the response carries a CSP that allows only the page's
+own nonce-tagged script and same-origin requests.
+
+There is no authentication. Bind it to localhost only.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import secrets
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -22,21 +33,26 @@ from arl.storage.repository import Repository
 app = FastAPI(title="Agentic Reliability Lab Dashboard")
 
 DB_PATH = os.environ.get("ARL_DB_PATH", "arl.db")
+METRICS_PATH = Path(os.environ.get("ARL_METRICS_PATH", "models/reliability_metrics.json"))
 STATIC_DIR = Path(__file__).parent / "static"
 if STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-def _repo() -> Repository:
-    return Repository(DB_PATH)
+@contextmanager
+def _repo() -> Iterator[Repository]:
+    repo = Repository(DB_PATH)
+    try:
+        yield repo
+    finally:
+        repo.close()
 
 
 @app.get("/api/overview")
 def overview() -> dict[str, object]:
-    repo = _repo()
-    runs = repo.list_runs()
-    evaluations = {e.run_id: e for e in repo.list_evaluation_results()}
-    repo.close()
+    with _repo() as repo:
+        runs = repo.list_runs()
+        evaluations = {e.run_id: e for e in repo.list_evaluation_results()}
 
     total = len(runs)
     graded = [evaluations[r.id] for r in runs if r.id in evaluations]
@@ -52,15 +68,14 @@ def overview() -> dict[str, object]:
 
 @app.get("/api/runs")
 def list_runs() -> list[dict[str, object]]:
-    repo = _repo()
-    runs = repo.list_runs()
-    evaluations = {e.run_id: e for e in repo.list_evaluation_results()}
-    diagnoses = {}
-    for run in runs:
-        d = repo.get_failure_diagnosis(run.id)
-        if d:
-            diagnoses[run.id] = d
-    repo.close()
+    with _repo() as repo:
+        runs = repo.list_runs()
+        evaluations = {e.run_id: e for e in repo.list_evaluation_results()}
+        diagnoses = {}
+        for run in runs:
+            d = repo.get_failure_diagnosis(run.id)
+            if d:
+                diagnoses[run.id] = d
 
     return [
         {
@@ -77,22 +92,20 @@ def list_runs() -> list[dict[str, object]]:
 
 @app.get("/api/runs/{run_id}")
 def run_detail(run_id: str) -> dict[str, object]:
-    repo = _repo()
-    run = repo.get_run(run_id)
-    if run is None:
-        for candidate in repo.list_runs():
-            if candidate.id.startswith(run_id):
-                run = candidate
-                break
-    if run is None:
-        repo.close()
-        raise HTTPException(status_code=404, detail="run not found")
+    with _repo() as repo:
+        run = repo.get_run(run_id)
+        if run is None:
+            for candidate in repo.list_runs():
+                if candidate.id.startswith(run_id):
+                    run = candidate
+                    break
+        if run is None:
+            raise HTTPException(status_code=404, detail="run not found")
 
-    trajectory = repo.get_trajectory(run.id)
-    task_result = repo.get_task_result(run.id)
-    evaluations = repo.list_evaluation_results([run.id])
-    diagnosis = repo.get_failure_diagnosis(run.id)
-    repo.close()
+        trajectory = repo.get_trajectory(run.id)
+        task_result = repo.get_task_result(run.id)
+        evaluations = repo.list_evaluation_results([run.id])
+        diagnosis = repo.get_failure_diagnosis(run.id)
 
     return {
         "id": run.id,
@@ -115,25 +128,41 @@ def run_detail(run_id: str) -> dict[str, object]:
 
 @app.get("/api/reliability")
 def reliability_metrics() -> dict[str, object]:
-    path = Path("models/reliability_metrics.json")
-    if not path.exists():
+    if not METRICS_PATH.exists():
         return {"trained": False}
-    with open(path) as f:
+    with open(METRICS_PATH, encoding="utf-8") as f:
         data = json.load(f)
     return {"trained": True, **data}
 
 
 @app.get("/", response_class=HTMLResponse)
-def index() -> str:
-    return _INDEX_HTML
+def index() -> HTMLResponse:
+    nonce = secrets.token_urlsafe(16)
+    csp = (
+        "default-src 'none'; "
+        f"script-src 'nonce-{nonce}'; "
+        f"style-src 'nonce-{nonce}'; "
+        "connect-src 'self'; "
+        "base-uri 'none'; "
+        "form-action 'none'; "
+        "frame-ancestors 'none'"
+    )
+    return HTMLResponse(
+        _INDEX_HTML.replace("__NONCE__", nonce),
+        headers={
+            "Content-Security-Policy": csp,
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+        },
+    )
 
 
 _INDEX_HTML = """<!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Agentic Reliability Lab</title>
-<style>
+<style nonce="__NONCE__">
   :root { color-scheme: dark; }
   body { font-family: ui-monospace, "SF Mono", Consolas, monospace; background: #0b0d10;
          color: #d8dee4; margin: 0; padding: 2rem; font-size: 14px; }
@@ -150,10 +179,11 @@ _INDEX_HTML = """<!doctype html>
            font-size: 0.82rem; }
   th { color: #7d8590; font-weight: 500; }
   .pass { color: #57ab5a; } .fail { color: #e5534b; }
-  tr { cursor: pointer; } tr:hover { background: #14171c; }
+  tbody tr { cursor: pointer; } tbody tr:hover { background: #14171c; }
   #run-detail { display: none; margin-top: 1rem; background: #12151a;
                 border: 1px solid #22262c; border-radius: 6px; padding: 1rem; }
   #run-detail pre { white-space: pre-wrap; font-size: 0.78rem; color: #b6bdc4; }
+  .error { color: #e5534b; }
 </style>
 </head>
 <body>
@@ -172,58 +202,103 @@ _INDEX_HTML = """<!doctype html>
 
 <div id="run-detail"></div>
 
-<script>
-async function j(url) { const r = await fetch(url); return r.json(); }
+<script nonce="__NONCE__">
+// Run ids, task ids, tool payloads etc. are untrusted: only ever put them into
+// the page with textContent, never into HTML strings.
+function el(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  if (className) node.className = className;
+  return node;
+}
+
+async function j(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url + ' -> HTTP ' + r.status);
+  return r.json();
+}
 
 function card(value, label) {
-  return `<div class="card"><div class="value">${value}</div><div class="label">${label}</div></div>`;
+  const c = el('div', null, 'card');
+  c.appendChild(el('div', value, 'value'));
+  c.appendChild(el('div', label, 'label'));
+  return c;
 }
+
+function fill(id, nodes) {
+  document.getElementById(id).replaceChildren(...nodes);
+}
+
+function showError(id, err) {
+  const box = document.getElementById(id);
+  box.style.display = 'block';
+  box.replaceChildren(el('div', err.message, 'error'));
+}
+
+function pct(x) { return x === null || x === undefined ? '—' : (x * 100).toFixed(1) + '%'; }
 
 async function loadOverview() {
   const o = await j('/api/overview');
-  const el = document.getElementById('overview-cards');
-  el.innerHTML =
-    card(o.total_runs, 'total runs') +
-    card(o.success_rate !== null ? (o.success_rate * 100).toFixed(1) + '%' : '—', 'success rate') +
-    card(o.graded_runs, 'graded runs');
+  fill('overview-cards', [
+    card(o.total_runs, 'total runs'),
+    card(pct(o.success_rate), 'success rate'),
+    card(o.graded_runs, 'graded runs'),
+  ]);
 }
 
 async function loadReliability() {
   const r = await j('/api/reliability');
-  const el = document.getElementById('reliability-cards');
   if (!r.trained) {
-    el.innerHTML = card('not trained', 'run `arl reliability train`');
+    fill('reliability-cards', [card('not trained', 'run arl reliability train')]);
     return;
   }
-  el.innerHTML =
-    card(r.auroc.toFixed(3), 'AUROC') +
-    card(r.auprc.toFixed(3), 'AUPRC') +
-    card(r.precision.toFixed(2), 'precision') +
-    card(r.recall.toFixed(2), 'recall') +
-    card(r.n_train_examples, 'train examples');
+  fill('reliability-cards', [
+    card(r.auroc.toFixed(3), 'AUROC (single split, all prefixes)'),
+    card(r.auprc.toFixed(3), 'AUPRC'),
+    card(r.precision.toFixed(2), 'precision'),
+    card(r.recall.toFixed(2), 'recall'),
+    card(r.n_train_examples, 'train examples'),
+  ]);
 }
 
 async function loadRuns() {
   const runs = await j('/api/runs');
   const tbody = document.querySelector('#runs-table tbody');
-  tbody.innerHTML = runs.map(r => `
-    <tr onclick="loadDetail('${r.id}')">
-      <td>${r.id.slice(0,8)}</td>
-      <td>${r.task_id}</td>
-      <td>${r.status}</td>
-      <td class="${r.success ? 'pass' : 'fail'}">${r.success === null ? '—' : (r.success ? 'PASS' : 'FAIL')}</td>
-      <td>${r.failure_category ?? '—'}</td>
-    </tr>`).join('');
+  tbody.replaceChildren(...runs.map(r => {
+    const tr = document.createElement('tr');
+    tr.dataset.id = r.id;
+    const result = r.success === null ? '—' : (r.success ? 'PASS' : 'FAIL');
+    const resultClass = r.success === null ? '' : (r.success ? 'pass' : 'fail');
+    tr.append(
+      el('td', r.id.slice(0, 8)),
+      el('td', r.task_id),
+      el('td', r.status),
+      el('td', result, resultClass),
+      el('td', r.failure_category ?? '—'),
+    );
+    return tr;
+  }));
 }
 
 async function loadDetail(id) {
-  const d = await j('/api/runs/' + id);
-  const el = document.getElementById('run-detail');
-  el.style.display = 'block';
-  el.innerHTML = `<h2>Run ${d.id}</h2><pre>${JSON.stringify(d, null, 2)}</pre>`;
+  const box = document.getElementById('run-detail');
+  box.style.display = 'block';
+  try {
+    const d = await j('/api/runs/' + encodeURIComponent(id));
+    box.replaceChildren(el('h2', 'Run ' + d.id), el('pre', JSON.stringify(d, null, 2)));
+  } catch (err) {
+    box.replaceChildren(el('div', err.message, 'error'));
+  }
 }
 
-loadOverview(); loadReliability(); loadRuns();
+document.querySelector('#runs-table tbody').addEventListener('click', ev => {
+  const tr = ev.target.closest('tr');
+  if (tr && tr.dataset.id) loadDetail(tr.dataset.id);
+});
+
+loadOverview().catch(e => showError('overview-cards', e));
+loadReliability().catch(e => showError('reliability-cards', e));
+loadRuns().catch(e => showError('run-detail', e));
 </script>
 </body>
 </html>
