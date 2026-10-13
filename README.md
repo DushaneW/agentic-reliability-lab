@@ -23,7 +23,7 @@ Autonomous agent runs often fail in structural ways before a task times out or f
 **Agentic Reliability Lab (ARL)** provides infrastructure to capture, evaluate, and predict these failure modes:
 
 1. **Typed Trajectory Telemetry:** Captures model decisions, tool calls, arguments, and environment responses inside a sandboxed virtual filesystem.
-2. **Deterministic Evaluation:** Grades task outcomes strictly against verifiable environment state without "LLM-as-a-judge" heuristics.
+2. **State-Based Evaluation:** Grades task outcomes directly against verifiable environment state without "LLM-as-a-judge" heuristics.
 3. **Early-Warning Prediction:** Extracts trajectory features at `20%`, `40%`, `60%`, `80%`, and `100%` completion horizons to predict whether an active run will fail before it finishes.
 
 ---
@@ -33,8 +33,8 @@ Autonomous agent runs often fail in structural ways before a task times out or f
 | Module | Description |
 | :--- | :--- |
 | **Sandboxed Execution Engine** | Runs agents against isolated benchmark suites in a virtual filesystem with process allow-lists, clean environments, and timeouts. |
-| **Controlled Fault Injection** | Uses a deterministic `FaultProfile` harness to test recovery and generate labeled reliability datasets. |
-| **Deterministic Graders** | Evaluates final workspace states, file outputs, and side effects deterministically ([`docs/evaluation.md`](docs/evaluation.md)). |
+| **Controlled Fault Injection** | Uses a `FaultProfile` harness to test recovery and generate labeled reliability datasets. |
+| **State Graders** | Evaluates final workspace states, file outputs, and side effects ([`docs/evaluation.md`](docs/evaluation.md)). |
 | **Predictive Reliability ML** | Trains **Logistic Regression** and **Gradient Boosting** models over 9 trajectory features to trigger early-stop interventions on failing runs. |
 | **Local Web Dashboard & CLI** | Includes the `arl` CLI and a FastAPI/Uvicorn telemetry dashboard backed by SQLite storage. |
 
@@ -59,7 +59,7 @@ Autonomous agent runs often fail in structural ways before a task times out or f
                                     v
 +-----------------------------------------------------------------------+
 |                          Evaluation Pipeline                          |
-|                       [ Deterministic Graders ]                       |
+|                           [ State Graders ]                           |
 +-----------------------------------+-----------------------------------+
                                     |
                                     v
@@ -260,7 +260,7 @@ make dashboard    # Launch the local FastAPI telemetry dashboard
 
 - [**Getting Started Guide**](docs/getting-started.md) - End-to-end installation and CLI tutorial.
 - [**System Architecture**](docs/architecture.md) - Internal module design, schemas, and data flow.
-- [**Evaluation Design**](docs/evaluation.md) - Deterministic grading principles and task assertions.
+- [**Evaluation Design**](docs/evaluation.md) - Grading principles and task assertions.
 - [**Benchmarks Reference**](docs/benchmarks.md) - Breakdown of all task suites and scenarios.
 - [**Research Methodology**](docs/research/methodology.md) - Feature engineering and ML pipeline design.
 - [**Experiments & CV Reports**](docs/research/experiments.md) - Statistical tables and validation protocols ([`cv_report.md`](docs/research/cv_report.md) · [`limitations.md`](docs/research/limitations.md)).
